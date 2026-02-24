@@ -1,0 +1,54 @@
+# Arquivos de dados e logs
+*.db
+*.txt
+*.json
+*.log
+*.cache
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+
+# Diretórios de output
+optimizer_output/
+logs/
+data/
+trades_log_*.txt
+daily_*.txt
+*.db
+
+# Arquivos de configuração sensível
+config.py
+.env
+*.key
+*.pem
+
+# Arquivos temporários
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Python
+*.egg-info/
+dist/
+build/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints
+
+# Streamlit
+.streamlit/
