@@ -5,15 +5,18 @@ import config
 
 _bot = None
 
+
 def _get_bot():
     global _bot
     if _bot is None:
         _bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
     return _bot
 
+
 async def _send(chat_id: str, text: str):
     bot = _get_bot()
     await bot.send_message(chat_id=chat_id, text=text)
+
 
 def send_async(chat_id: str, text: str):
     """

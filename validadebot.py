@@ -4,8 +4,10 @@ from pathlib import Path
 BOT_FILE = Path("bot.py")
 UTILS_FILE = Path("utils.py")
 
+
 def get_defined_functions(tree):
     return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+
 
 def get_imported_utils_functions(tree):
     funcs = set()
@@ -15,14 +17,19 @@ def get_imported_utils_functions(tree):
                 funcs.add(n.name)
     return funcs
 
+
 def get_utils_calls(tree):
     calls = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Attribute):
-                if isinstance(node.func.value, ast.Name) and node.func.value.id == "utils":
+                if (
+                    isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "utils"
+                ):
                     calls.add(node.func.attr)
     return calls
+
 
 def main():
     bot_tree = ast.parse(BOT_FILE.read_text(encoding="utf-8"))
@@ -50,6 +57,7 @@ def main():
         print("\n❌ Chamadas inexistentes em utils.py:")
         for f in sorted(missing_calls):
             print(f"   - utils.{f}()")
+
 
 if __name__ == "__main__":
     main()

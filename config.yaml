@@ -1,30 +1,91 @@
-ml:
-  enabled: true
-  min_confidence: 0.7
-  model_type: ENSEMBLE
-  retrain_frequency_days: 7
+# ==================================================
+# XP3 PRO - CONFIGURAÇÃO CENTRAL v6.0 (QUANT-REFORM)
+# ==================================================
+# Uma única fonte da verdade para todos os parâmetros do bot.
+
+# -- MODO DE OPERAÇÃO GLOBAL --
+# True: Usa Kelly mais alto, thresholds mais baixos e desativa anti-chop no 1º loss.
+# False: Modo padrão, mais conservador.
+AGGRESSIVE_MODE: True
+
+# -- PARÂMETROS DE CONEXÃO --
 mt5:
-  terminal_path: C:\MetaTrader 5 Terminal\terminal64.exe
-risk_levels:
-  AGRESSIVO:
-    max_daily_dd: 0.03
-    max_symbols: 12
-    min_rr: 1.2
-    min_win_rate: 0.55
-    risk_per_trade: 0.02
-  CONSERVADOR:
-    max_daily_dd: 0.01
-    max_symbols: 5
-    min_rr: 2.0
-    min_win_rate: 0.65
-    risk_per_trade: 0.005
-  MODERADO:
-    max_daily_dd: 0.02
-    max_symbols: 8
-    min_rr: 1.5
-    min_win_rate: 0.6
-    risk_per_trade: 0.01
-trading:
-  enable_correlation_filter: true
-  enable_hedging: true
-  enable_news_filter: true
+  terminal_path: "C:\\MetaTrader 5 Terminal\\terminal64.exe"
+  account: 
+  password: ""
+  server: ""
+
+# -- TIMEFRAMES DE ANÁLISE --
+timeframes:
+  macro: "H1"     # Timeframe macro (1 hora)
+  micro: "M15"    # Timeframe micro (15 minutos)
+  signal: "M5"    # Timeframe de sinal (5 minutos)
+
+# -- GESTÃO DE RISCO E CAPITAL (KELLY CRITERION) --
+# Regra #3: Kelly Fracionado Inteligente
+kelly_fraction:
+  base: 0.35                  # 35% do Kelly completo como base
+  winrate_boost: 0.10         # Bônus se winrate (7d) > 62%
+  loss_streak_penalty: -0.15  # Penalidade se loss streak >= 2
+  max_ruin_probability: 0.003 # Máximo 0.3% de chance de ruína no Monte Carlo
+
+# -- LIMITES DE RISCO OPERACIONAL --
+# Regra #1 e #5: Filtros essenciais e limites diários
+risk_limits:
+  max_daily_loss_money: 2500.00 # Em BRL
+  max_concurrent_positions: 8
+  max_losses_per_symbol_default: 2
+  max_losses_per_symbol_aggressive: 4
+
+# -- FILTROS DE ENTRADA --
+# Regra #1: Apenas os filtros essenciais e rápidos
+entry_filters:
+  # Filtro de Spread: Rejeita se o spread atual for X vezes maior que a média de N candles
+  spread_filter:
+    max_spread_multiplier: 2.5
+    lookback_candles: 20
+  # Filtro Anti-Chop: Ativado após N losses consecutivos no mesmo ativo
+  anti_chop_filter:
+    consecutive_losses_to_activate: 2
+  # Blackout de Notícias (em minutos, antes e depois do evento)
+  news_blackout_mins: 15
+
+# -- MODELO DE MACHINE LEARNING --
+# Regra #2 e #4: Thresholds realistas e configuração do modelo
+ml_model:
+  confidence_base: 0.62       # Threshold mínimo para considerar um sinal
+  dynamic_threshold_max: 0.74 # Teto do threshold dinâmico
+  training_days: 90           # Janela de dados para retreinamento diário
+
+# -- MODO DE SEGURANÇA (CIRCUIT BREAKER) --
+# Regra #2: Ativado apenas em pânico real do mercado
+safety_mode:
+  market_drawdown_trigger_pct: 4.0 # % de queda do IBOV no dia
+  vix_br_trigger: 38.0             # Nível do VIX Brasil (medo extremo)
+
+# -- CUSTOS DE BACKTEST --
+# Regra #7: Simulação realista para walk-forward backtest
+backtest_costs:
+  slippage_pct: 0.05      # % de slippage médio por ordem
+  commission_per_order: 4.90 # Custo de corretagem por ordem (ex: valor fixo)
+  tax_on_profit_pct: 0.20 # 20% de IR sobre o lucro (Day Trade)
+
+# -- SISTEMA ADAPTATIVO INTELIGENTE --
+# Auto-ajuste de parâmetros baseado em análise contínua de métricas
+adaptive_intelligence:
+  enabled: True               # Ativa/desativa sistema adaptativo
+  monitoring_interval: 900    # Segundos entre coletas de métricas (15 min)
+  adjustment_interval: 3600   # Segundos entre análises de ajuste (1 hora)
+  
+  # Parâmetros ajustáveis dinamicamente
+  adjustable_parameters:
+    ml_threshold_range: [0.50, 0.80]           # Min/max para threshold ML
+    kelly_multiplier_range: [0.3, 2.0]         # Min/max para multiplicador Kelly
+    spread_multiplier_range: [1.0, 5.0]        # Min/max para filtro de spread
+    max_losses_range: [1, 4]                   # Min/max para perdas por símbolo
+  
+  # Triggers de ajuste emergencial
+  emergency_triggers:
+    low_winrate_threshold: 0.40                # Winrate crítico (< 40%)
+    high_volatility_threshold: 0.05             # Volatilidade extrema (> 5%)
+    daily_drawdown_threshold: 0.8               # 80% do limite diário

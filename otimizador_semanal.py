@@ -6,7 +6,9 @@ OTIMIZADOR COM AUTO-SYNC DE MARKET WATCH - VERSÃO CORRIGIDA FINAL
 ✅ Lógica de entrada flexível
 ✅ Import circular corrigido
 """
+
 import os
+
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -21,31 +23,87 @@ os.environ.setdefault("KMP_AFFINITY", "disabled")
 os.environ.setdefault("KMP_INIT_AT_FORK", "FALSE")
 os.environ.setdefault("KMP_WARNINGS", "0")
 import functools
+
 print = functools.partial(print, flush=True)
-print("[DEBUG] Importando os...", flush=True); import os; print("[DEBUG] os importado.", flush=True)
-print("[DEBUG] Importando json...", flush=True); import json; print("[DEBUG] json importado.", flush=True)
-print("[DEBUG] Importando time...", flush=True); import time; print("[DEBUG] time importado.", flush=True)
-print("[DEBUG] Importando logging...", flush=True); import logging; print("[DEBUG] logging importado.", flush=True)
-print("[DEBUG] Importando sys...", flush=True); import sys; print("[DEBUG] sys importado.", flush=True)
-print("[DEBUG] Importando io...", flush=True); import io; print("[DEBUG] io importado.", flush=True)
-print("[DEBUG] Importando pathlib.Path...", flush=True); from pathlib import Path; print("[DEBUG] pathlib.Path importado.", flush=True)
-print("[DEBUG] Importando typing...", flush=True); from typing import List, Dict, Any, Optional, Set; print("[DEBUG] typing importado.", flush=True)
-print("[DEBUG] Importando concurrent.futures...", flush=True); from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError; print("[DEBUG] concurrent.futures importado.", flush=True)
-print("[DEBUG] Importando dataclasses...", flush=True); from dataclasses import dataclass; print("[DEBUG] dataclasses importado.", flush=True)
-print("[DEBUG] Importando datetime...", flush=True); from datetime import datetime, timedelta; print("[DEBUG] datetime importado.", flush=True)
-print("[DEBUG] Importando collections...", flush=True); from collections import defaultdict, Counter; print("[DEBUG] collections importado.", flush=True)
-print("[DEBUG] Importando requests...", flush=True); import requests; print("[DEBUG] requests importado.", flush=True)
+print("[DEBUG] Importando os...", flush=True)
+import os
+
+print("[DEBUG] os importado.", flush=True)
+print("[DEBUG] Importando json...", flush=True)
+import json
+
+print("[DEBUG] json importado.", flush=True)
+print("[DEBUG] Importando time...", flush=True)
+import time
+
+print("[DEBUG] time importado.", flush=True)
+print("[DEBUG] Importando logging...", flush=True)
+import logging
+
+print("[DEBUG] logging importado.", flush=True)
+print("[DEBUG] Importando sys...", flush=True)
+import sys
+
+print("[DEBUG] sys importado.", flush=True)
+print("[DEBUG] Importando io...", flush=True)
+import io
+
+print("[DEBUG] io importado.", flush=True)
+print("[DEBUG] Importando pathlib.Path...", flush=True)
+from pathlib import Path
+
+print("[DEBUG] pathlib.Path importado.", flush=True)
+print("[DEBUG] Importando typing...", flush=True)
+from typing import List, Dict, Any, Optional, Set
+
+print("[DEBUG] typing importado.", flush=True)
+print("[DEBUG] Importando concurrent.futures...", flush=True)
+from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
+
+print("[DEBUG] concurrent.futures importado.", flush=True)
+print("[DEBUG] Importando dataclasses...", flush=True)
+from dataclasses import dataclass
+
+print("[DEBUG] dataclasses importado.", flush=True)
+print("[DEBUG] Importando datetime...", flush=True)
+from datetime import datetime, timedelta
+
+print("[DEBUG] datetime importado.", flush=True)
+print("[DEBUG] Importando collections...", flush=True)
+from collections import defaultdict, Counter
+
+print("[DEBUG] collections importado.", flush=True)
+print("[DEBUG] Importando requests...", flush=True)
+import requests
+
+print("[DEBUG] requests importado.", flush=True)
 print("[DEBUG] Importando config...", flush=True)
 import config
+
 print("[DEBUG] config importado.", flush=True)
-print("[DEBUG] Importando numpy...", flush=True); import numpy as np; print("[DEBUG] numpy importado.", flush=True)
-print("[DEBUG] Importando pandas...", flush=True); import pandas as pd; print("[DEBUG] pandas importado.", flush=True)
-print("[DEBUG] Importando tqdm...", flush=True); from tqdm import tqdm; print("[DEBUG] tqdm importado.", flush=True)
-print("[DEBUG] Importando ThreadPoolExecutor...", flush=True); from concurrent.futures import ThreadPoolExecutor; print("[DEBUG] ThreadPoolExecutor importado.", flush=True)
-print("[DEBUG] Importando ta...", flush=True); import ta; print("[DEBUG] ta importado.", flush=True)
-if sys.platform == 'win32':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+print("[DEBUG] Importando numpy...", flush=True)
+import numpy as np
+
+print("[DEBUG] numpy importado.", flush=True)
+print("[DEBUG] Importando pandas...", flush=True)
+import pandas as pd
+
+print("[DEBUG] pandas importado.", flush=True)
+print("[DEBUG] Importando tqdm...", flush=True)
+from tqdm import tqdm
+
+print("[DEBUG] tqdm importado.", flush=True)
+print("[DEBUG] Importando ThreadPoolExecutor...", flush=True)
+from concurrent.futures import ThreadPoolExecutor
+
+print("[DEBUG] ThreadPoolExecutor importado.", flush=True)
+print("[DEBUG] Importando ta...", flush=True)
+import ta
+
+print("[DEBUG] ta importado.", flush=True)
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
     print("[DEBUG] Encoding UTF-8 forçado no Windows")
 os.environ["PYTHONUNBUFFERED"] = "1"
 try:
@@ -58,6 +116,7 @@ except Exception:
 try:
     print("[DEBUG] Importando MetaTrader5...", flush=True)
     import MetaTrader5 as mt5
+
     print("[DEBUG] MetaTrader5 importado.", flush=True)
 except Exception:
     mt5 = None
@@ -65,6 +124,7 @@ except Exception:
 try:
     print("[DEBUG] Importando polygon.RESTClient...", flush=True)
     from polygon import RESTClient
+
     print("[DEBUG] polygon.RESTClient importado.", flush=True)
 except Exception:
     RESTClient = None
@@ -72,15 +132,24 @@ except Exception:
 try:
     print("[DEBUG] Importando utils...", flush=True)
     import utils
+
     print("[DEBUG] utils importado.", flush=True)
 except Exception:
     utils = None
-print("[DEBUG] Importando tenacity...", flush=True); from tenacity import retry, stop_after_attempt, wait_fixed; print("[DEBUG] tenacity importado.", flush=True)
+print("[DEBUG] Importando tenacity...", flush=True)
+from tenacity import retry, stop_after_attempt, wait_fixed
+
+print("[DEBUG] tenacity importado.", flush=True)
+
+
 def _safe_import_minimize(timeout_seconds: float = 3.0):
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TErr
+
     def _do():
         from scipy.optimize import minimize
+
         return minimize
+
     with ThreadPoolExecutor(max_workers=1) as ex:
         fut = ex.submit(_do)
         try:
@@ -90,13 +159,17 @@ def _safe_import_minimize(timeout_seconds: float = 3.0):
         except Exception:
             return None
 
+
 try:
     print("[DEBUG] Importando backfill...", flush=True)
     from backfill import ensure_history
+
     print("[DEBUG] backfill importado.", flush=True)
 except Exception:
     ensure_history = None
     print("[DEBUG] backfill indisponível.", flush=True)
+
+
 def safe_call_with_timeout(fn, timeout_seconds: float, *args, **kwargs):
     ex = ThreadPoolExecutor(max_workers=1)
     fut = ex.submit(fn, *args, **kwargs)
@@ -121,15 +194,22 @@ def safe_call_with_timeout(fn, timeout_seconds: float, *args, **kwargs):
             ex.shutdown(wait=False)
         return False, {"error": str(e)}
 
+
 def is_valid_dataframe(df: Optional[pd.DataFrame], min_rows: int = 100) -> bool:
     """Valida se o DataFrame tem dados suficientes e é válido"""
-    if df is None: return False
-    if not isinstance(df, pd.DataFrame): return False
-    if df.empty: return False
-    if len(df) < min_rows: return False
-    required_cols = {'open', 'high', 'low', 'close'}
-    if not required_cols.issubset(set(df.columns)): return False
+    if df is None:
+        return False
+    if not isinstance(df, pd.DataFrame):
+        return False
+    if df.empty:
+        return False
+    if len(df) < min_rows:
+        return False
+    required_cols = {"open", "high", "low", "close"}
+    if not required_cols.issubset(set(df.columns)):
+        return False
     return True
+
 
 def compute_sharpe(equity_curve: list, bars_per_day: int = 28) -> float:
     try:
@@ -147,12 +227,15 @@ def compute_sharpe(equity_curve: list, bars_per_day: int = 28) -> float:
     except Exception:
         return 0.0
 
+
 def run_backtests_split(symbols: list) -> dict:
     try:
         from optimizer_optuna import backtest_params_on_df
+
         stocks = [s for s in symbols if not utils.is_future(s)]
         futures = [s for s in symbols if utils.is_future(s)]
         res = {}
+
         def _run(group):
             curves = []
             for sym in group:
@@ -167,15 +250,23 @@ def run_backtests_split(symbols: list) -> dict:
             if not curves:
                 return 0.0
             avg_len = min(len(c) for c in curves)
-            avg_curve = np.mean([np.array(c[:avg_len], dtype=float) for c in curves], axis=0).tolist()
+            avg_curve = np.mean(
+                [np.array(c[:avg_len], dtype=float) for c in curves], axis=0
+            ).tolist()
             return compute_sharpe(avg_curve)
+
         res["stocks_pure_sharpe"] = _run(stocks)
         res["futures_pure_sharpe"] = _run(futures)
         mix_syms = (stocks[:10] + futures[:10])[:20]
         res["mixed_portfolio_sharpe"] = _run(mix_syms)
         return res
     except Exception:
-        return {"stocks_pure_sharpe": 0.0, "futures_pure_sharpe": 0.0, "mixed_portfolio_sharpe": 0.0}
+        return {
+            "stocks_pure_sharpe": 0.0,
+            "futures_pure_sharpe": 0.0,
+            "mixed_portfolio_sharpe": 0.0,
+        }
+
 
 def get_ibov_monthly_regime() -> str:
     try:
@@ -192,12 +283,15 @@ def get_ibov_monthly_regime() -> str:
     except Exception:
         return "NEUTRAL"
 
+
 def safe_mt5_initialize():
     """Inicializa MT5 com path configurado e retry"""
-    path = getattr(config, 'MT5_TERMINAL_PATH', None) if config else None
+    path = getattr(config, "MT5_TERMINAL_PATH", None) if config else None
     if not mt5.initialize(path=path) if path else mt5.initialize():
         raise ConnectionError("Falha na inicialização do MT5")
     return True
+
+
 # ===========================
 # CONFIGURAÇÕES
 # ===========================
@@ -210,19 +304,26 @@ class BacktestConfig:
     RISK_PER_TRADE: float = 0.01
     MIN_BARS_FOR_METRICS: int = 50
     MIN_DATA_LENGTH: int = 100
+
     @property
     def bars_per_year(self) -> int:
         return self.BARS_PER_DAY * self.TRADING_DAYS_PER_YEAR
+
+
 config_bt = BacktestConfig()
+
+
 class JSONFormatter(logging.Formatter):
     def format(self, record):
         payload = {
             "time": datetime.utcnow().isoformat(),
             "level": record.levelname,
             "name": record.name,
-            "message": record.getMessage()
+            "message": record.getMessage(),
         }
         return json.dumps(payload, ensure_ascii=False)
+
+
 logger = logging.getLogger("otimizador_auto_sync")
 logger.setLevel(logging.INFO)
 if os.getenv("XP3_LOG_JSON", "1") == "1":
@@ -230,18 +331,37 @@ if os.getenv("XP3_LOG_JSON", "1") == "1":
     handler.setFormatter(JSONFormatter())
     logger.handlers = [handler]
 else:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s"
+    )
 OPT_OUTPUT_DIR = getattr(config, "OPTIMIZER_OUTPUT", "optimizer_output")
 os.makedirs(OPT_OUTPUT_DIR, exist_ok=True)
 SECTOR_MAP = config.SECTOR_MAP
-COMMODITY_SYMBOLS = {"PETR4", "VALE3", "PRIO3", "GGBR4", "CSNA3", "SUZB3", "KLBN11", "ENEV3"}
+COMMODITY_SYMBOLS = {
+    "PETR4",
+    "VALE3",
+    "PRIO3",
+    "GGBR4",
+    "CSNA3",
+    "SUZB3",
+    "KLBN11",
+    "ENEV3",
+}
 REJECT_SKIP = set()
-print("[DEBUG] Importando warnings...", flush=True); import warnings; print("[DEBUG] warnings importado.", flush=True)
+print("[DEBUG] Importando warnings...", flush=True)
+import warnings
+
+print("[DEBUG] warnings importado.", flush=True)
+
+
 def _safe_import_optuna_warning(timeout_seconds: float = 3.0):
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TErr
+
     def _do():
         from optuna.exceptions import ExperimentalWarning
+
         return ExperimentalWarning
+
     with ThreadPoolExecutor(max_workers=1) as ex:
         fut = ex.submit(_do)
         try:
@@ -250,6 +370,8 @@ def _safe_import_optuna_warning(timeout_seconds: float = 3.0):
             return None
         except Exception:
             return None
+
+
 _ew = _safe_import_optuna_warning()
 if _ew is not None:
     warnings.filterwarnings("ignore", category=_ew)
@@ -258,9 +380,61 @@ if _ew is not None:
 # ===========================
 SANDBOX_MODE = bool(int(os.getenv("XP3_SANDBOX", "1")))
 BARS_TO_LOAD = 4000 if SANDBOX_MODE else 5000
+
+
 # ===========================
 # GARANTIR CONEXÃO MT5
 # ===========================
+def sync_sector_map_to_mt5():
+    """Garante que todos os ativos do SECTOR_MAP estejam visíveis no MT5."""
+    if not mt5 or not mt5.terminal_info().connected:
+        logger.warning("MT5 não conectado, impossível sincronizar símbolos.")
+        return
+
+    logger.info("Sincronizando SECTOR_MAP com o Market Watch do MT5...")
+
+    try:
+        # 1. Obter todos os símbolos visíveis no Market Watch
+        market_watch_symbols = {s.name for s in mt5.symbols_get()}
+        logger.info(
+            f"Encontrados {len(market_watch_symbols)} símbolos no Market Watch."
+        )
+
+        # 2. Obter a lista de símbolos do nosso SECTOR_MAP
+        sector_map_symbols = set(SECTOR_MAP.keys())
+        logger.info(f"Verificando {len(sector_map_symbols)} símbolos do SECTOR_MAP.")
+
+        # 3. Encontrar os que faltam
+        missing_symbols = sector_map_symbols - market_watch_symbols
+
+        if not missing_symbols:
+            logger.info("✅ Market Watch já está em sincronia com o SECTOR_MAP.")
+            return
+
+        logger.warning(
+            f"Adicionando {len(missing_symbols)} símbolos ausentes ao Market Watch: {list(missing_symbols)}"
+        )
+
+        # 4. Adicionar cada símbolo ausente
+        added_count = 0
+        for symbol in missing_symbols:
+            if mt5.symbol_select(symbol, True):
+                added_count += 1
+            else:
+                logger.error(
+                    f"Falha ao adicionar o símbolo '{symbol}' ao Market Watch. Erro: {mt5.last_error()}"
+                )
+
+        logger.info(
+            f"✅ {added_count} de {len(missing_symbols)} símbolos foram adicionados com sucesso."
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Ocorreu um erro durante a sincronização de símbolos com o MT5: {e}"
+        )
+
+
 def ensure_mt5_connection() -> bool:
     """
     Valida e força conexão com o terminal correto do MT5 (via Tenacity)
@@ -272,11 +446,15 @@ def ensure_mt5_connection() -> bool:
         terminal = mt5.terminal_info()
         if terminal and terminal.connected:
             logger.info("[OK] MT5 conectado (Tenacity OK)")
+            # Sincroniza os símbolos logo após conectar
+            sync_sector_map_to_mt5()
             return True
         return False
     except Exception as e:
         logger.critical(f"🚨 FALHA CRÍTICA: Não foi possível conectar ao MT5: {e}")
         return False
+
+
 def try_mt5_connection(timeout_seconds: int = 10) -> bool:
     """
     Tenta conectar ao MT5 com timeout. Retorna False se falhar.
@@ -284,14 +462,17 @@ def try_mt5_connection(timeout_seconds: int = 10) -> bool:
     if not mt5:
         return False
     import threading
+
     result = [False]
+
     def connect():
         try:
-            path = getattr(config, 'MT5_TERMINAL_PATH', None) if config else None
+            path = getattr(config, "MT5_TERMINAL_PATH", None) if config else None
             ok = mt5.initialize(path=path) if path else mt5.initialize()
             result[0] = bool(ok)
         except Exception:
             result[0] = False
+
     thread = threading.Thread(target=connect)
     thread.daemon = True
     thread.start()
@@ -300,15 +481,21 @@ def try_mt5_connection(timeout_seconds: int = 10) -> bool:
         logger.warning(f"⏱️ MT5 timeout ({timeout_seconds}s) - continuando sem MT5")
         return False
     return result[0]
+
+
 # ===========================
 # AUXILIARES DE OTIMIZAÇÃO
 # ===========================
 def load_all_symbols() -> List[str]:
-    """Retorna lista de ativos Sniper"""
+    """Retorna lista de ativos a otimizar"""
     return sorted(list(SECTOR_MAP.keys()))
+
+
 def get_symbols():
     """Alias para carregar símbolos permitidos"""
     return load_all_symbols()
+
+
 # =========================================================
 # 3. ALOCAÇÃO MARKOWITZ (SCIPY)
 # =========================================================
@@ -333,10 +520,12 @@ def optimize_portfolio_allocation(selected_assets_metrics):
     n = len(selected_assets_metrics)
     if n == 0:
         return {}
-    returns = np.array([m.get('roi_esperado', 0.05) for m in selected_assets_metrics], dtype=np.float64)
+    returns = np.array(
+        [m.get("roi_esperado", 0.05) for m in selected_assets_metrics], dtype=np.float64
+    )
     curves = []
     for m in selected_assets_metrics:
-        ec = m.get('equity_curve') or []
+        ec = m.get("equity_curve") or []
         if isinstance(ec, list) and len(ec) >= 50:
             curves.append(np.asarray(ec, dtype=np.float64))
         else:
@@ -356,11 +545,13 @@ def optimize_portfolio_allocation(selected_assets_metrics):
         cov_matrix = np.cov(rets_mat)
     else:
         cov_matrix = np.eye(n) * 0.001
+
     def negative_sharpe(weights):
         p_ret = np.sum(returns * weights)
         p_vol = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
         return -(p_ret / p_vol) if p_vol > 0 else 0
-    symbols_order = [m.get('symbol') for m in selected_assets_metrics]
+
+    symbols_order = [m.get("symbol") for m in selected_assets_metrics]
     sector_constraints = []
     sector_groups = {}
     for i, sym in enumerate(symbols_order):
@@ -368,14 +559,37 @@ def optimize_portfolio_allocation(selected_assets_metrics):
         if not sec:
             continue
         sector_groups.setdefault(sec, []).append(i)
-    constraints = [{'type': 'eq', 'fun': lambda x: np.sum(x) - 1}]
+    constraints = [{"type": "eq", "fun": lambda x: np.sum(x) - 1}]
     for sec, idxs in sector_groups.items():
-        constraints.append({'type': 'ineq', 'fun': lambda x, idxs=idxs: 0.25 - float(np.sum([x[j] for j in idxs]))})
-    blue_idxs = [i for i, m in enumerate(selected_assets_metrics) if str(m.get("category","")).upper() == "BLUE CHIP"]
-    opp_idxs = [i for i, m in enumerate(selected_assets_metrics) if str(m.get("category","")).upper() != "BLUE CHIP"]
+        constraints.append(
+            {
+                "type": "ineq",
+                "fun": lambda x, idxs=idxs: 0.25 - float(np.sum([x[j] for j in idxs])),
+            }
+        )
+    blue_idxs = [
+        i
+        for i, m in enumerate(selected_assets_metrics)
+        if str(m.get("category", "")).upper() == "BLUE CHIP"
+    ]
+    opp_idxs = [
+        i
+        for i, m in enumerate(selected_assets_metrics)
+        if str(m.get("category", "")).upper() != "BLUE CHIP"
+    ]
     # Comentário: Blue Chips mínimo 50%, Oportunidades máximo 50%
-    constraints.append({'type': 'ineq', 'fun': lambda x, idxs=blue_idxs: float(np.sum([x[j] for j in idxs])) - 0.50})
-    constraints.append({'type': 'ineq', 'fun': lambda x, idxs=opp_idxs: 0.50 - float(np.sum([x[j] for j in idxs]))})
+    constraints.append(
+        {
+            "type": "ineq",
+            "fun": lambda x, idxs=blue_idxs: float(np.sum([x[j] for j in idxs])) - 0.50,
+        }
+    )
+    constraints.append(
+        {
+            "type": "ineq",
+            "fun": lambda x, idxs=opp_idxs: 0.50 - float(np.sum([x[j] for j in idxs])),
+        }
+    )
     bounds = []
     for i in range(n):
         af = float(selected_assets_metrics[i].get("avg_fin", 0.0) or 0.0)
@@ -396,29 +610,52 @@ def optimize_portfolio_allocation(selected_assets_metrics):
     init_guess = [1 / n] * n
     minimize_fn = _safe_import_minimize()
     if minimize_fn is not None:
-        res = minimize_fn(negative_sharpe, init_guess, method='SLSQP', bounds=bounds, constraints=constraints)
+        res = minimize_fn(
+            negative_sharpe,
+            init_guess,
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
+        )
         allocations = {}
         for i, asset in enumerate(selected_assets_metrics):
-            allocations[asset['symbol']] = res.x[i]
+            allocations[asset["symbol"]] = res.x[i]
         return allocations
     else:
-        symbols_order = [m.get('symbol') for m in selected_assets_metrics]
+        symbols_order = [m.get("symbol") for m in selected_assets_metrics]
         elite = getattr(config, "ELITE_BLUE_CHIPS", [])
-        blue_idxs = [i for i, m in enumerate(selected_assets_metrics) if m.get("symbol") in elite]
-        opp_idxs = [i for i, m in enumerate(selected_assets_metrics) if m.get("symbol") not in elite]
+        blue_idxs = [
+            i for i, m in enumerate(selected_assets_metrics) if m.get("symbol") in elite
+        ]
+        opp_idxs = [
+            i
+            for i, m in enumerate(selected_assets_metrics)
+            if m.get("symbol") not in elite
+        ]
         weights = np.zeros(n, dtype=np.float64)
-        blue_valid = [i for i in blue_idxs if float(selected_assets_metrics[i].get("avg_fin", 0) or 0) >= 10_000_000]
-        opp_valid = [i for i in opp_idxs if float(selected_assets_metrics[i].get("avg_fin", 0) or 0) >= 10_000_000]
+        blue_valid = [
+            i
+            for i in blue_idxs
+            if float(selected_assets_metrics[i].get("avg_fin", 0) or 0) >= 10_000_000
+        ]
+        opp_valid = [
+            i
+            for i in opp_idxs
+            if float(selected_assets_metrics[i].get("avg_fin", 0) or 0) >= 10_000_000
+        ]
         if blue_valid:
             w_b = 0.50 / max(len(blue_valid), 1)
-            for i in blue_valid: weights[i] = w_b
+            for i in blue_valid:
+                weights[i] = w_b
         if opp_valid:
             w_o = 0.50 / max(len(opp_valid), 1)
-            for i in opp_valid: weights[i] = min(weights[i] + w_o, 0.15)
+            for i in opp_valid:
+                weights[i] = min(weights[i] + w_o, 0.15)
         sector_groups = {}
         for i, sym in enumerate(symbols_order):
             sec = SECTOR_MAP.get(sym)
-            if sec: sector_groups.setdefault(sec, []).append(i)
+            if sec:
+                sector_groups.setdefault(sec, []).append(i)
         for sec, idxs in sector_groups.items():
             s = float(np.sum([weights[j] for j in idxs]))
             if s > 0.25 and s > 0:
@@ -430,28 +667,30 @@ def optimize_portfolio_allocation(selected_assets_metrics):
             weights = weights / total
         allocations = {}
         for i, asset in enumerate(selected_assets_metrics):
-            allocations[asset['symbol']] = float(weights[i])
+            allocations[asset["symbol"]] = float(weights[i])
         return allocations
+
+
 def filter_correlated_assets(final_elite: dict, threshold: float = 0.70) -> dict:
     print(f"\n[RISK] ⚔️ Iniciando Filtro de Correlação (Limiar: {threshold})...")
     data = {}
     metrics_map = {}
     for sym, content in final_elite.items():
-        curve = content.get('equity_curve', [])
+        curve = content.get("equity_curve", [])
         if not isinstance(curve, list) or len(curve) < 50:
             continue
         data[sym] = curve
         try:
-            calmar = float(content.get('test_metrics', {}).get('calmar', 0.0) or 0.0)
+            calmar = float(content.get("test_metrics", {}).get("calmar", 0.0) or 0.0)
             if calmar == 0.0:
-                calmar = float(content.get('calmar', 0.0) or 0.0)
+                calmar = float(content.get("calmar", 0.0) or 0.0)
         except Exception:
             calmar = 0.0
         metrics_map[sym] = float(calmar or 0.0)
     if len(data) < 2:
         return final_elite
     df_curves = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in data.items()]))
-    df_curves = df_curves.fillna(method='ffill').dropna()
+    df_curves = df_curves.fillna(method="ffill").dropna()
     if df_curves is None or df_curves.empty:
         return final_elite
     df_returns = df_curves.pct_change().dropna()
@@ -468,58 +707,80 @@ def filter_correlated_assets(final_elite: dict, threshold: float = 0.70) -> dict
             if correlation > threshold:
                 score_a = float(metrics_map.get(sym_a, 0.0) or 0.0)
                 score_b = float(metrics_map.get(sym_b, 0.0) or 0.0)
-                print(f"   ⚠️ Conflito Detectado: {sym_a} x {sym_b} (Corr: {correlation:.2f})")
+                print(
+                    f"   ⚠️ Conflito Detectado: {sym_a} x {sym_b} (Corr: {correlation:.2f})"
+                )
                 if score_a >= score_b:
-                    print(f"      ❌ Removendo {sym_b} (Calmar menor: {score_b:.2f} vs {score_a:.2f})")
+                    print(
+                        f"      ❌ Removendo {sym_b} (Calmar menor: {score_b:.2f} vs {score_a:.2f})"
+                    )
                     to_drop.add(sym_b)
                 else:
-                    print(f"      ❌ Removendo {sym_a} (Calmar menor: {score_a:.2f} vs {score_b:.2f})")
+                    print(
+                        f"      ❌ Removendo {sym_a} (Calmar menor: {score_a:.2f} vs {score_b:.2f})"
+                    )
                     to_drop.add(sym_a)
     new_elite = {k: v for k, v in final_elite.items() if k not in to_drop}
-    print(f"[RISK] Filtro Concluído. Ativos removidos: {len(to_drop)}. Restantes: {len(new_elite)}.\n")
+    print(
+        f"[RISK] Filtro Concluído. Ativos removidos: {len(to_drop)}. Restantes: {len(new_elite)}.\n"
+    )
     return new_elite
+
+
 def _is_generic_params(p: dict) -> bool:
     try:
-        return (int(p.get("ema_short", -1)) == 9 and
-                int(p.get("ema_long", -1)) == 21 and
-                int(p.get("rsi_low", -1)) == 30 and
-                int(p.get("rsi_high", -1)) == 70 and
-                float(p.get("adx_threshold", -1)) == 25 and
-                float(p.get("sl_atr_multiplier", -1)) == 2.5 and
-                float(p.get("tp_mult", -1)) == 5.0)
+        return (
+            int(p.get("ema_short", -1)) == 9
+            and int(p.get("ema_long", -1)) == 21
+            and int(p.get("rsi_low", -1)) == 30
+            and int(p.get("rsi_high", -1)) == 70
+            and float(p.get("adx_threshold", -1)) == 25
+            and float(p.get("sl_atr_multiplier", -1)) == 2.5
+            and float(p.get("tp_mult", -1)) == 5.0
+        )
     except Exception:
         return False
+
+
 def _ensure_non_generic(sym: str, p: dict) -> dict:
     elite = getattr(config, "ELITE_SYMBOLS", {}) if config else {}
     if isinstance(elite, dict):
         ep = elite.get(sym)
         if isinstance(ep, dict) and not _is_generic_params(ep):
             return {
-                "ema_short": int(ep.get("ema_short", 12)),
-                "ema_long": int(ep.get("ema_long", 97)),
-                "rsi_low": int(ep.get("rsi_low", 37)),
-                "rsi_high": int(ep.get("rsi_high", 73)),
-                "adx_threshold": float(ep.get("adx_threshold", 13)),
-                "mom_min": float(ep.get("mom_min", 0.0) or 0.0),
-                "sl_atr_multiplier": float(ep.get("sl_atr_multiplier", 3.0) or 3.0),
-                "tp_mult": float(ep.get("tp_mult", 3.0) or 3.0),
+                "ema_short": int(ep.get("ema_short", p.get("ema_short", 9))),
+                "ema_long": int(ep.get("ema_long", p.get("ema_long", 21))),
+                "rsi_low": int(ep.get("rsi_low", p.get("rsi_low", 30))),
+                "rsi_high": int(ep.get("rsi_high", p.get("rsi_high", 70))),
+                "adx_threshold": float(
+                    ep.get("adx_threshold", p.get("adx_threshold", 25))
+                ),
+                "mom_min": float(ep.get("mom_min", p.get("mom_min", 0.0)) or 0.0),
+                "sl_atr_multiplier": float(
+                    ep.get("sl_atr_multiplier", p.get("sl_atr_multiplier", 2.5)) or 2.5
+                ),
+                "tp_mult": float(ep.get("tp_mult", p.get("tp_mult", 3.0)) or 3.0),
             }
     if not _is_generic_params(p):
         return p
-    return {
-        "ema_short": 12, "ema_long": 97, "rsi_low": 37, "rsi_high": 73,
-        "adx_threshold": 13, "mom_min": float(p.get("mom_min", 0.0) or 0.0),
-        "sl_atr_multiplier": 3.0, "tp_mult": 3.0
-    }
+    return p
+
+
 def get_expected_vol_2026():
     """Retorna fator de volatilidade esperado (default 1.0)"""
     return 1.0
+
+
 def adjust_params_for_vol(result: dict, vol: float):
     """Placeholder para ajuste de parâmetros baseado em volatilidade"""
     pass
+
+
 def x_semantic_search(query: str, limit: int = 5):
     """Placeholder para pesquisa semântica simulada"""
     return [{"score": 0.5, "text": "default"}] * limit
+
+
 def get_macro_rate(rate_name: str):
     cache_file = os.path.join(OPT_OUTPUT_DIR, "macro_cache.json")
     now = datetime.utcnow()
@@ -574,13 +835,25 @@ def get_macro_rate(rate_name: str):
             pass
         return ipca_val
     return 0.12
+
+
 def _polygon_ticker(sym: str) -> str:
     s = sym.upper().strip()
     if s.startswith("^"):
         return s
     return f"{s}.SA"
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
-def _polygon_aggs_df(ticker: str, timespan: str, multiplier: int, from_date: str, to_date: str, limit: int, api_key: str) -> Optional[pd.DataFrame]:
+def _polygon_aggs_df(
+    ticker: str,
+    timespan: str,
+    multiplier: int,
+    from_date: str,
+    to_date: str,
+    limit: int,
+    api_key: str,
+) -> Optional[pd.DataFrame]:
     try:
         url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{from_date}/{to_date}?limit={limit}&sort=asc&apiKey={api_key}"
         r = requests.get(url, timeout=8)
@@ -624,19 +897,37 @@ def _polygon_aggs_df(ticker: str, timespan: str, multiplier: int, from_date: str
         return df
     except Exception:
         return None
+
+
 def _yahoo_ticker(sym: str) -> str:
     s = sym.upper().strip()
     if s.startswith("^"):
         return s
     return f"{s}.SA"
-def _yahoo_history(sym: str, interval: str = "1d", period: Optional[str] = None, start: Optional[str] = None, end: Optional[str] = None) -> Optional[pd.DataFrame]:
+
+
+def _yahoo_history(
+    sym: str,
+    interval: str = "1d",
+    period: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+) -> Optional[pd.DataFrame]:
     try:
         import yfinance as yf
+
         t = yf.Ticker(_yahoo_ticker(sym))
         if start and end:
-            df = t.history(start=start, end=end, interval=interval, auto_adjust=True, actions=False)
+            df = t.history(
+                start=start, end=end, interval=interval, auto_adjust=True, actions=False
+            )
         else:
-            df = t.history(period=period or "730d", interval=interval, auto_adjust=True, actions=False)
+            df = t.history(
+                period=period or "730d",
+                interval=interval,
+                auto_adjust=True,
+                actions=False,
+            )
         if df is None or df.empty:
             return None
         cols = ["Open", "High", "Low", "Close", "Volume"]
@@ -650,15 +941,20 @@ def _yahoo_history(sym: str, interval: str = "1d", period: Optional[str] = None,
         return out
     except Exception:
         return None
+
+
 def x_keyword_search(query: str, limit: int = 10) -> list:
     try:
         # Placeholder simples: retorna score neutro se não houver integração externa
         return [{"score": 0.5, "title": query}] * limit
     except Exception:
         return [{"score": 0.5}] * limit
+
+
 def get_ibov_data(start: str = "2023-01-01", end: Optional[str] = None):
     try:
         from datetime import date
+
         today = date.today().strftime("%Y-%m-%d")
         end = end or today
         total = 100
@@ -675,11 +971,11 @@ def get_ibov_data(start: str = "2023-01-01", end: Optional[str] = None):
                         rates = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_D1, 0, 1000)
                         if rates is not None and len(rates) > 0:
                             dfm = pd.DataFrame(rates)
-                            dfm['time'] = pd.to_datetime(dfm['time'], unit='s')
-                            dfm.set_index('time', inplace=True)
-                            if 'tick_volume' in dfm.columns:
-                                dfm = dfm.rename(columns={'tick_volume': 'volume'})
-                            dfm = dfm[['open', 'high', 'low', 'close', 'volume']]
+                            dfm["time"] = pd.to_datetime(dfm["time"], unit="s")
+                            dfm.set_index("time", inplace=True)
+                            if "tick_volume" in dfm.columns:
+                                dfm = dfm.rename(columns={"tick_volume": "volume"})
+                            dfm = dfm[["open", "high", "low", "close", "volume"]]
                             pbar.update(total - pbar.n)
                             pbar.close()
                             print(f"[DATA] IBOV MT5 OK: {len(dfm)} linhas", flush=True)
@@ -712,13 +1008,18 @@ def get_ibov_data(start: str = "2023-01-01", end: Optional[str] = None):
             pass
         print("[DATA] IBOV: Falha total nas fontes", flush=True)
         return None
+
+
 def classify_asset_profile(symbol: str, df_ibov: Optional[pd.DataFrame] = None) -> str:
     try:
         from datetime import date
+
         today = date.today().strftime("%Y-%m-%d")
         start = "2024-01-01"
         api_key = os.getenv("POLYGON_API_KEY", "xrE09LEWJYBZfQcV57pCvsw4aqkOiqbz")
-        df_a = _polygon_aggs_df(_polygon_ticker(symbol), "day", 1, start, today, 1000, api_key)
+        df_a = _polygon_aggs_df(
+            _polygon_ticker(symbol), "day", 1, start, today, 1000, api_key
+        )
         if df_a is None or len(df_a) < 150:
             df_a = _yahoo_history(symbol, interval="1d", period="365d")
             if df_a is None or len(df_a) < 150:
@@ -737,7 +1038,9 @@ def classify_asset_profile(symbol: str, df_ibov: Optional[pd.DataFrame] = None) 
         beta = cov / var_ib if var_ib > 0 else 1.0
         vol_ann = float(np.std(a_ret)) * np.sqrt(252)
         sma50 = df_a["close"].rolling(50).mean().iloc[-1]
-        sma200 = df_a["close"].rolling(200).mean().iloc[-1] if len(df_a) >= 200 else sma50
+        sma200 = (
+            df_a["close"].rolling(200).mean().iloc[-1] if len(df_a) >= 200 else sma50
+        )
         is_uptrend = sma50 > sma200
         if (beta < 0.85) and (vol_ann < 0.30):
             return "CORE_DEFENSIVE"
@@ -746,10 +1049,14 @@ def classify_asset_profile(symbol: str, df_ibov: Optional[pd.DataFrame] = None) 
         return "HIGH_VOLATILITY"
     except Exception:
         return "HIGH_VOLATILITY"
+
+
 def check_liquidity_dynamic(sym: str, ibov_df: pd.DataFrame = None) -> dict:
     from optimizer_optuna import calculate_adx
+
     try:
         from datetime import date
+
         today = date.today().strftime("%Y-%m-%d")
         start = "2024-01-01"
         api_key = os.getenv("POLYGON_API_KEY", "xrE09LEWJYBZfQcV57pCvsw4aqkOiqbz")
@@ -760,27 +1067,32 @@ def check_liquidity_dynamic(sym: str, ibov_df: pd.DataFrame = None) -> dict:
                 rates = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_D1, 0, 1000)
                 if rates is not None and len(rates) > 0:
                     dfm = pd.DataFrame(rates)
-                    dfm['time'] = pd.to_datetime(dfm['time'], unit='s')
-                    dfm.set_index('time', inplace=True)
-                    if 'real_volume' in dfm.columns and dfm['real_volume'].sum() > 0:
-                        dfm = dfm.rename(columns={'real_volume': 'volume'})
-                    elif 'tick_volume' in dfm.columns:
-                        dfm = dfm.rename(columns={'tick_volume': 'volume'})
-                    df_d1 = dfm[['open', 'high', 'low', 'close', 'volume']]
+                    dfm["time"] = pd.to_datetime(dfm["time"], unit="s")
+                    dfm.set_index("time", inplace=True)
+                    if "real_volume" in dfm.columns and dfm["real_volume"].sum() > 0:
+                        dfm = dfm.rename(columns={"real_volume": "volume"})
+                    elif "tick_volume" in dfm.columns:
+                        dfm = dfm.rename(columns={"tick_volume": "volume"})
+                    df_d1 = dfm[["open", "high", "low", "close", "volume"]]
             except Exception:
                 df_d1 = None
         if df_d1 is None or df_d1.empty:
             try:
-                df_d1 = _polygon_aggs_df(_polygon_ticker(sym), "day", 1, start, today, 1000, api_key)
+                df_d1 = _polygon_aggs_df(
+                    _polygon_ticker(sym), "day", 1, start, today, 1000, api_key
+                )
             except Exception:
                 df_d1 = None
         if df_d1 is None or df_d1.empty:
             import logging as _logging
+
             try:
                 _logging.getLogger("yfinance").setLevel(_logging.CRITICAL)
             except Exception:
                 pass
-            ok, res = safe_call_with_timeout(_yahoo_history, 2, sym, interval="1d", period="365d")
+            ok, res = safe_call_with_timeout(
+                _yahoo_history, 2, sym, interval="1d", period="365d"
+            )
             df_d1 = res if ok else None
             if df_d1 is None or (hasattr(df_d1, "empty") and df_d1.empty):
                 REJECT_SKIP.add(sym)
@@ -802,41 +1114,75 @@ def check_liquidity_dynamic(sym: str, ibov_df: pd.DataFrame = None) -> dict:
                 rates15 = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_M15, 0, 2000)
                 if rates15 is not None and len(rates15) > 0:
                     dfm15 = pd.DataFrame(rates15)
-                    dfm15['time'] = pd.to_datetime(dfm15['time'], unit='s')
-                    dfm15.set_index('time', inplace=True)
-                    if 'real_volume' in dfm15.columns and dfm15['real_volume'].sum() > 0:
-                        dfm15 = dfm15.rename(columns={'real_volume': 'volume'})
-                    elif 'tick_volume' in dfm15.columns:
-                        dfm15 = dfm15.rename(columns={'tick_volume': 'volume'})
-                    df_m15 = dfm15[['open', 'high', 'low', 'close', 'volume']]
+                    dfm15["time"] = pd.to_datetime(dfm15["time"], unit="s")
+                    dfm15.set_index("time", inplace=True)
+                    if (
+                        "real_volume" in dfm15.columns
+                        and dfm15["real_volume"].sum() > 0
+                    ):
+                        dfm15 = dfm15.rename(columns={"real_volume": "volume"})
+                    elif "tick_volume" in dfm15.columns:
+                        dfm15 = dfm15.rename(columns={"tick_volume": "volume"})
+                    df_m15 = dfm15[["open", "high", "low", "close", "volume"]]
             except Exception:
                 df_m15 = None
-        if (df_m15 is None) or (not isinstance(df_m15, pd.DataFrame)) or (df_m15.empty) or (len(df_m15) < 100):
+        if (
+            (df_m15 is None)
+            or (not isinstance(df_m15, pd.DataFrame))
+            or (df_m15.empty)
+            or (len(df_m15) < 100)
+        ):
             try:
-                df_m15 = _polygon_aggs_df(_polygon_ticker(sym), "minute", 15, start, today, 5000, api_key)
+                df_m15 = _polygon_aggs_df(
+                    _polygon_ticker(sym), "minute", 15, start, today, 5000, api_key
+                )
             except Exception:
                 df_m15 = None
         adx_threshold = 20
-        if (df_m15 is None) or (not isinstance(df_m15, pd.DataFrame)) or (df_m15.empty) or (len(df_m15) < 100):
+        if (
+            (df_m15 is None)
+            or (not isinstance(df_m15, pd.DataFrame))
+            or (df_m15.empty)
+            or (len(df_m15) < 100)
+        ):
             import logging as _logging
+
             try:
                 _logging.getLogger("yfinance").setLevel(_logging.CRITICAL)
             except Exception:
                 pass
-            ok2, res2 = safe_call_with_timeout(_yahoo_history, 2, sym, interval="15m", period="60d")
+            ok2, res2 = safe_call_with_timeout(
+                _yahoo_history, 2, sym, interval="15m", period="60d"
+            )
             df_m15 = res2 if ok2 else None
             if df_m15 is None:
                 REJECT_SKIP.add(sym)
-        if (df_m15 is not None) and isinstance(df_m15, pd.DataFrame) and (not df_m15.empty) and (len(df_m15) > 100):
-            _, atr_vals = calculate_adx(df_m15["high"].values, df_m15["low"].values, df_m15["close"].values)
-            avg_atr_pct = float(np.mean(atr_vals[-50:])) / max(float(np.mean(df_m15["close"].values[-50:])), 1e-9)
+        if (
+            (df_m15 is not None)
+            and isinstance(df_m15, pd.DataFrame)
+            and (not df_m15.empty)
+            and (len(df_m15) > 100)
+        ):
+            _, atr_vals = calculate_adx(
+                df_m15["high"].values, df_m15["low"].values, df_m15["close"].values
+            )
+            avg_atr_pct = float(np.mean(atr_vals[-50:])) / max(
+                float(np.mean(df_m15["close"].values[-50:])), 1e-9
+            )
             adx_threshold = 18 if avg_atr_pct < 0.005 else 22
-        return is_liquid, reason, {"avg_fin": avg_fin_vol, "adx_threshold": adx_threshold}
+        return (
+            is_liquid,
+            reason,
+            {"avg_fin": avg_fin_vol, "adx_threshold": adx_threshold},
+        )
     except Exception as e:
         logger.error(f"❌ Erro no check_liquidez para {sym}: {e}")
         return False, f"ERRO_CHECK: {str(e)}", {}
+
+
 # --- CÓDIGO DUPLICADO REMOVIDO PARA LIMPEZA ---
 # Otimizador Principal consolidado no final do arquivo.
+
 
 def scheduler():
     try:
@@ -859,6 +1205,7 @@ def _load_real_trade_overlay(lookback_days: int = 60, min_trades: int = 10) -> d
             return {}
 
         import sqlite3
+
         cutoff = (datetime.now() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
         conn = sqlite3.connect(db_path)
         df = pd.read_sql_query(
@@ -894,21 +1241,27 @@ def _load_real_trade_overlay(lookback_days: int = 60, min_trades: int = 10) -> d
         return overlay
     except Exception:
         return {}
+
+
 def extract_features(indicators, symbol):
     """
     Features + sentiment/macro (usa x_semantic_search via tool, macro via MT5).
     """
-    features = [] # Original...
-   
+    features = []  # Original...
+
     # Novo: Sentiment X
-    sentiment = x_semantic_search(f"sentimento {symbol} B3", limit=5) # Tool call simulado
-    features.append(np.mean([s['score'] for s in sentiment]))
-   
+    sentiment = x_semantic_search(
+        f"sentimento {symbol} B3", limit=5
+    )  # Tool call simulado
+    features.append(np.mean([s["score"] for s in sentiment]))
+
     # Novo: Macro (Selic via MT5 calendar)
-    selic = get_macro_rate('Selic') # Nova função MT5
+    selic = get_macro_rate("Selic")  # Nova função MT5
     features.append(selic)
-   
+
     return features
+
+
 # ===========================
 # SINCRONIZAÇÃO MARKET WATCH
 # ===========================
@@ -917,27 +1270,27 @@ def open_all_mt5_symbols() -> int:
     STEP 1: Abre TODOS os símbolos disponíveis no MT5
     Retorna o número de símbolos adicionados
     """
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("[INFO] ABRINDO TODOS OS SÍMBOLOS DO MT5")
-    print("="*80)
-   
+    print("=" * 80)
+
     if not ensure_mt5_connection():
         logger.error("[ERROR] MT5 não disponível")
         return 0
-   
+
     # Pega TODOS os símbolos disponíveis no MT5
     all_symbols = mt5.symbols_get()
     if not all_symbols:
         logger.error("[ERROR] Nenhum símbolo disponível no MT5")
         return 0
-   
+
     total_symbols = len(all_symbols)
     print(f"\n[INFO] Total de símbolos no MT5: {total_symbols}")
     print(f"[INFO] Adicionando todos ao Market Watch...")
-   
+
     added = 0
     failed = 0
-   
+
     # Adiciona TODOS os símbolos
     for symbol in tqdm(all_symbols, desc="Adicionando símbolos"):
         try:
@@ -945,61 +1298,68 @@ def open_all_mt5_symbols() -> int:
                 added += 1
             else:
                 failed += 1
-            time.sleep(0.01) # Pequeno delay para não sobrecarregar
+            time.sleep(0.01)  # Pequeno delay para não sobrecarregar
         except Exception as e:
             failed += 1
-   
+
     print(f"\n[OK] {added}/{total_symbols} símbolos adicionados")
     if failed > 0:
         print(f"[WARN] {failed} símbolos falharam")
-   
+
     return added
+
+
 def sync_market_watch_with_sector_map(clear_first: bool = True) -> bool:
     """
     STEP 2: Filtra Market Watch para manter apenas símbolos do SECTOR_MAP
     """
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("[INFO] FILTRANDO APENAS SÍMBOLOS DO SECTOR_MAP")
-    print("="*80)
-   
+    print("=" * 80)
+
     if not ensure_mt5_connection():
         logger.error("[ERROR] MT5 não disponível")
         return False
-   
+
     if SANDBOX_MODE:
-        desired_symbols = {'PETR4', 'VALE3', 'ITUB4', 'BBDC4', 'ABEV3'}
+        desired_symbols = {"PETR4", "VALE3", "ITUB4", "BBDC4", "ABEV3"}
     else:
-        desired_symbols = {k.upper().strip() for k in SECTOR_MAP.keys()
-                          if isinstance(k, str) and k.strip()}
-   
+        desired_symbols = {
+            k.upper().strip()
+            for k in SECTOR_MAP.keys()
+            if isinstance(k, str) and k.strip()
+        }
+
     if not desired_symbols:
         logger.error("[ERROR] SECTOR_MAP vazio")
         return False
-   
+
     print(f"\n[INFO] SECTOR_MAP contém: {len(desired_symbols)} símbolos")
-   
+
     all_symbols = mt5.symbols_get()
-    current_symbols = {s.name for s in all_symbols if s.visible} if all_symbols else set()
-   
+    current_symbols = (
+        {s.name for s in all_symbols if s.visible} if all_symbols else set()
+    )
+
     print(f"[INFO] Market Watch atual: {len(current_symbols)} símbolos")
-   
+
     # Símbolos que precisam ser adicionados (estão no SECTOR_MAP mas não no Market Watch)
     to_add = desired_symbols - current_symbols
-   
+
     # Símbolos que podem ser removidos (estão no Market Watch mas não no SECTOR_MAP)
     to_remove = current_symbols - desired_symbols
-   
+
     already_ok = current_symbols & desired_symbols
-   
+
     print(f"\n[INFO] ANÁLISE:")
     print(f" • Já corretos (SECTOR_MAP): {len(already_ok)} símbolos")
     print(f" • Adicionar do SECTOR_MAP: {len(to_add)} símbolos")
-   
+
     if clear_first:
         print(f" • Remover (não estão no SECTOR_MAP): {len(to_remove)} símbolos")
     else:
         print(f" • Manter extras no Market Watch: {len(to_remove)} símbolos")
-   
+
     # ✅ REMOVIDO: Sem confirmação manual
     # Remove símbolos que NÃO estão no SECTOR_MAP (se clear_first=True)
     if clear_first and to_remove:
@@ -1013,10 +1373,12 @@ def sync_market_watch_with_sector_map(clear_first: bool = True) -> bool:
             except:
                 pass
         print(f"[OK] {removed} símbolos removidos")
-   
+
     max_visible = int(getattr(config, "MT5_MAX_VISIBLE", 300) or 300)
     if len(current_symbols) > max_visible:
-        logger.warning(f"[WARN] Market Watch excede o limite visível ({len(current_symbols)}/{max_visible})")
+        logger.warning(
+            f"[WARN] Market Watch excede o limite visível ({len(current_symbols)}/{max_visible})"
+        )
     remaining_slots = max(0, max_visible - len(current_symbols))
     to_add = set(list(to_add)[:remaining_slots]) if remaining_slots > 0 else set()
     # Adiciona símbolos do SECTOR_MAP que estão faltando
@@ -1024,7 +1386,7 @@ def sync_market_watch_with_sector_map(clear_first: bool = True) -> bool:
         print(f"\n[INFO] Adicionando {len(to_add)} símbolos do SECTOR_MAP...")
         added = 0
         failed = []
-       
+
         for symbol in tqdm(sorted(to_add), desc="Adicionando"):
             try:
                 info = mt5.symbol_info(symbol)
@@ -1032,48 +1394,62 @@ def sync_market_watch_with_sector_map(clear_first: bool = True) -> bool:
                     logger.warning(f"[WARN] {symbol} não existe no MT5")
                     failed.append(symbol)
                     continue
-               
+
                 if mt5.symbol_select(symbol, True):
                     added += 1
                 else:
                     failed.append(symbol)
-               
+
                 time.sleep(0.05)
-               
+
             except Exception as e:
                 logger.warning(f"[ERROR] {symbol}: {e}")
                 failed.append(symbol)
-       
+
         print(f"[OK] {added}/{len(to_add)} símbolos adicionados")
-       
+
         if failed:
             print(f"\n[WARN] {len(failed)} símbolos falharam:")
             for sym in failed[:10]:
                 print(f" - {sym}")
             if len(failed) > 10:
                 print(f" ... e mais {len(failed) - 10}")
-   
+
     final_symbols = mt5.symbols_get()
-    final_in_sector_map = len([s for s in final_symbols if s.visible and s.name in desired_symbols]) if final_symbols else 0
+    final_in_sector_map = (
+        len([s for s in final_symbols if s.visible and s.name in desired_symbols])
+        if final_symbols
+        else 0
+    )
     final_total = len([s for s in final_symbols if s.visible]) if final_symbols else 0
-   
+
     print(f"\n[OK] SINCRONIZAÇÃO CONCLUÍDA!")
     print(f" Market Watch Total: {final_total} símbolos")
-    print(f" Do SECTOR_MAP: {final_in_sector_map}/{len(desired_symbols)} ({final_in_sector_map/len(desired_symbols)*100:.1f}%)")
-    print("="*80)
-   
+    print(
+        f" Do SECTOR_MAP: {final_in_sector_map}/{len(desired_symbols)} ({final_in_sector_map/len(desired_symbols)*100:.1f}%)"
+    )
+    print("=" * 80)
+
     return final_in_sector_map >= len(desired_symbols) * 0.9
+
+
 # ===========================
 # CARREGAMENTO DE DADOS
 # ===========================
-def load_data_with_retry(symbol: str, bars: int, timeframe=None, max_retries: int = 1) -> Optional[pd.DataFrame]:
+def load_data_with_retry(
+    symbol: str, bars: int, timeframe=None, max_retries: int = 1
+) -> Optional[pd.DataFrame]:
     logger.info(f"📥 [DADOS] Carregando {symbol} (fallback Polygon/Yahoo)")
     s = (symbol or "").upper().strip()
     is_fut = s.endswith("$") or s.startswith(("WIN", "WDO", "IND", "DOL"))
     if is_fut:
         try:
             if ensure_mt5_connection():
-                tf = mt5.TIMEFRAME_M15 if timeframe in (None, "M15") else mt5.TIMEFRAME_D1
+                tf = (
+                    mt5.TIMEFRAME_M15
+                    if timeframe in (None, "M15")
+                    else mt5.TIMEFRAME_D1
+                )
                 mt5.symbol_select(s, True)
                 rates = mt5.copy_rates_from_pos(s, tf, 0, max(bars, 100))
                 if rates:
@@ -1084,13 +1460,20 @@ def load_data_with_retry(symbol: str, bars: int, timeframe=None, max_retries: in
         except Exception:
             pass
     return load_data_polygon(symbol, bars, timeframe)
+
+
 def load_data_polygon(symbol: str, bars: int, timeframe=None) -> Optional[pd.DataFrame]:
     try:
         from datetime import date, timedelta
+
         end = date.today()
-        start = (end - timedelta(days=365*2)).strftime("%Y-%m-%d")
+        start = (end - timedelta(days=365 * 2)).strftime("%Y-%m-%d")
         end_s = end.strftime("%Y-%m-%d")
-        ts = "minute" if timeframe is None else ("minute" if timeframe == "M15" else "day")
+        ts = (
+            "minute"
+            if timeframe is None
+            else ("minute" if timeframe == "M15" else "day")
+        )
         # Primeiro tenta Yahoo (rápido e robusto)
         try:
             if ts == "minute":
@@ -1104,12 +1487,16 @@ def load_data_polygon(symbol: str, bars: int, timeframe=None) -> Optional[pd.Dat
         # Fallback Polygon com timeout curto
         api_key = os.getenv("POLYGON_API_KEY", "xrE09LEWJYBZfQcV57pCvsw4aqkOiqbz")
         mult = 15 if ts == "minute" else 1
-        df = _polygon_aggs_df(_polygon_ticker(symbol), ts, mult, start, end_s, max(bars, 500), api_key)
+        df = _polygon_aggs_df(
+            _polygon_ticker(symbol), ts, mult, start, end_s, max(bars, 500), api_key
+        )
         if df is not None and len(df) >= 100:
             return df.tail(bars).sort_index()
         return None
     except Exception:
         return None
+
+
 # ===========================
 # CÁLCULO CORRETO DO ADX
 # ===========================
@@ -1119,33 +1506,57 @@ def calculate_adx(high, low, close, period=14):
     tr2 = np.abs(high - np.roll(close, 1))
     tr3 = np.abs(low - np.roll(close, 1))
     tr = np.maximum.reduce([tr1, tr2, tr3])
-   
+
     up_move = high - np.roll(high, 1)
     down_move = np.roll(low, 1) - low
-   
+
     plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
     minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-   
-    atr = pd.Series(tr).ewm(alpha=1/period, adjust=False).mean().values
-    plus_di = 100 * pd.Series(plus_dm).ewm(alpha=1/period, adjust=False).mean().values / (atr + 1e-10)
-    minus_di = 100 * pd.Series(minus_dm).ewm(alpha=1/period, adjust=False).mean().values / (atr + 1e-10)
-   
+
+    atr = pd.Series(tr).ewm(alpha=1 / period, adjust=False).mean().values
+    plus_di = (
+        100
+        * pd.Series(plus_dm).ewm(alpha=1 / period, adjust=False).mean().values
+        / (atr + 1e-10)
+    )
+    minus_di = (
+        100
+        * pd.Series(minus_dm).ewm(alpha=1 / period, adjust=False).mean().values
+        / (atr + 1e-10)
+    )
+
     dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di + 1e-10)
-    adx = pd.Series(dx).ewm(alpha=1/period, adjust=False).mean().fillna(0).values
-   
+    adx = pd.Series(dx).ewm(alpha=1 / period, adjust=False).mean().fillna(0).values
+
     return adx, atr
+
+
 # ===========================
 # MÉTRICAS
 # ===========================
 def compute_advanced_metrics(equity_curve: List[float]) -> Dict[str, Any]:
     """Calcula métricas avançadas de performance"""
     if not equity_curve or len(equity_curve) < 2:
-        return {"total_return": 0.0, "max_drawdown": 0.01, "calmar": 0.0, "sortino": 0.0,
-                "sharpe": 0.0, "profit_factor": 0.0, "recovery_factor": 0.0}
+        return {
+            "total_return": 0.0,
+            "max_drawdown": 0.01,
+            "calmar": 0.0,
+            "sortino": 0.0,
+            "sharpe": 0.0,
+            "profit_factor": 0.0,
+            "recovery_factor": 0.0,
+        }
     returns = np.diff(equity_curve) / equity_curve[:-1]
     if len(returns) < config_bt.MIN_BARS_FOR_METRICS:
-        return {"total_return": 0.0, "max_drawdown": 1.0, "calmar": 0.0, "sortino": 0.0,
-                "sharpe": 0.0, "profit_factor": 0.0, "recovery_factor": 0.0}
+        return {
+            "total_return": 0.0,
+            "max_drawdown": 1.0,
+            "calmar": 0.0,
+            "sortino": 0.0,
+            "sharpe": 0.0,
+            "profit_factor": 0.0,
+            "recovery_factor": 0.0,
+        }
     total_return = equity_curve[-1] / equity_curve[0] - 1
     peak = np.maximum.accumulate(equity_curve)
     drawdowns = (equity_curve - peak) / peak
@@ -1154,14 +1565,27 @@ def compute_advanced_metrics(equity_curve: List[float]) -> Dict[str, Any]:
     years = n_bars / config_bt.bars_per_year
     annualized = (1 + total_return) ** (1 / years) - 1 if years >= 1 else total_return
     ret_std = np.std(returns)
-    sharpe = (annualized - config_bt.RISK_FREE_RATE) / (ret_std * np.sqrt(config_bt.bars_per_year)) if ret_std > 0 else 0.0
+    sharpe = (
+        (annualized - config_bt.RISK_FREE_RATE)
+        / (ret_std * np.sqrt(config_bt.bars_per_year))
+        if ret_std > 0
+        else 0.0
+    )
     downside = returns[returns < 0]
-    downside_std = np.std(downside) * np.sqrt(config_bt.bars_per_year) if len(downside) > 0 else 1e-6
+    downside_std = (
+        np.std(downside) * np.sqrt(config_bt.bars_per_year)
+        if len(downside) > 0
+        else 1e-6
+    )
     sortino = (annualized - config_bt.RISK_FREE_RATE) / downside_std
     calmar = annualized / max_dd
     wins = returns[returns > 0]
     losses = np.abs(returns[returns < 0])
-    profit_factor = sum(wins) / sum(losses) if len(losses) > 0 else float('inf') if len(wins) > 0 else 0.0
+    profit_factor = (
+        sum(wins) / sum(losses)
+        if len(losses) > 0
+        else float("inf") if len(wins) > 0 else 0.0
+    )
     profit_factor = min(profit_factor, 999.0)
     recovery_factor = total_return / max_dd if max_dd > 0 else 0.0
     win_rate = len(wins) / len(returns) if len(returns) > 0 else 0.0
@@ -1178,17 +1602,33 @@ def compute_advanced_metrics(equity_curve: List[float]) -> Dict[str, Any]:
         "recovery_factor": float(recovery_factor),
         "expectancy": float(expectancy),
         "win_rate": float(win_rate),
-        "final_equity": float(equity_curve[-1])
+        "final_equity": float(equity_curve[-1]),
     }
+
+
 # ===========================
 # BACKTEST CORE (NUMBA)
 # ===========================
 def fast_backtest_core(
-    close, high, low, volume, volume_ma,
-    ema_short, ema_long, rsi, rsi_2, adx, momentum, atr,
-    rsi_low, rsi_high,
-    adx_threshold, mom_min,
-    sl_mult, tp_mult, base_slippage,
+    close,
+    high,
+    low,
+    volume,
+    volume_ma,
+    ema_short,
+    ema_long,
+    rsi,
+    rsi_2,
+    adx,
+    momentum,
+    atr,
+    rsi_low,
+    rsi_high,
+    adx_threshold,
+    mom_min,
+    sl_mult,
+    tp_mult,
+    base_slippage,
     risk_per_trade=0.01,
     use_trailing=True,
     trail_atr_mult=1.0,
@@ -1196,7 +1636,7 @@ def fast_backtest_core(
     point_value=0.0,
     tick_size=0.01,
     action_cost_pct=0.00055,
-    future_fee_per_contract=1.0
+    future_fee_per_contract=1.0,
 ):
     """
     High Win Rate Backtest Core with Strict Take Profit (Sniper Mode)
@@ -1206,26 +1646,26 @@ def fast_backtest_core(
     position = 0.0
     entry_price = 0.0
     stop_price = 0.0
-    target_price = 0.0 # ✅ Take Profit Target
+    target_price = 0.0  # ✅ Take Profit Target
     trades = 0
     wins = 0
     losses = 0
     costs_paid = 0.0
-   
+
     transaction_cost_pct = action_cost_pct
     n = len(close)
-   
+
     # Arrays para métricas
     # ✅ FIX: Inicializa com capital inicial para evitar divisão por zero
     equity_curve = np.full(n, cash)
     drawdown = np.zeros(n)
-   
+
     # Estado: 0=Fora, 1=Comprado
     state = 0
-   
+
     for i in range(1, n):
         current_price = close[i]
-       
+
         # 1. GESTÃO DE POSIÇÃO (SE ESTIVER COMPRADO)
         if state == 1:
             # ✅ VERIFICAÇÃO DE TAKE PROFIT (Prioridade Máxima)
@@ -1244,16 +1684,18 @@ def fast_backtest_core(
                     cost = val_exit * transaction_cost_pct
                     gross_profit = (exit_price - entry_price) * position
                     net_profit = gross_profit - cost
-                    cash += (val_exit - cost)
+                    cash += val_exit - cost
                     costs_paid += cost
-                if net_profit > 0: wins += 1
-                else: losses += 1
-               
+                if net_profit > 0:
+                    wins += 1
+                else:
+                    losses += 1
+
                 trades += 1
                 state = 0
                 position = 0.0
                 equity = cash
-           
+
             # ❌ VERIFICAÇÃO DE STOP LOSS
             elif low[i] <= stop_price:
                 exit_price = stop_price - (stop_price * base_slippage)
@@ -1269,9 +1711,9 @@ def fast_backtest_core(
                     cost = val_exit * transaction_cost_pct
                     gross_profit = (exit_price - entry_price) * position
                     net_profit = gross_profit - cost
-                    cash += (val_exit - cost)
+                    cash += val_exit - cost
                     costs_paid += cost
-                losses += 1 # Stop é sempre Loss
+                losses += 1  # Stop é sempre Loss
                 trades += 1
                 state = 0
                 position = 0.0
@@ -1285,7 +1727,11 @@ def fast_backtest_core(
             # ⏳ MANUTENÇÃO (Atualiza Equity mas não sai)
             else:
                 if asset_type == 1:
-                    unreal = ((current_price - entry_price) / max(tick_size, 1e-6)) * point_value * position
+                    unreal = (
+                        ((current_price - entry_price) / max(tick_size, 1e-6))
+                        * point_value
+                        * position
+                    )
                     equity = cash + unreal
                 else:
                     equity = cash + (position * current_price)
@@ -1293,26 +1739,28 @@ def fast_backtest_core(
         # Lógica Híbrida: Pullback em Tendência OU Reversão Lateral (RSI 2)
         elif state == 0:
             signal = False
-           
+
             # Setup A: Pullback Clássico (Tendência)
             # Preço acima da média longa (Tendência de Alta) E recuo no RSI
             trend_condition = close[i] > ema_long[i]
             pullback_condition = rsi[i] < rsi_low
-           
+
             # Setup B: Larry Williams (Lateralidade/Correção Forte)
             # RSI de 2 períodos extremamente sobrevendido (< 5 ou param)
             reversion_condition = rsi_2[i] < 5
-           
+
             # Filtro de Volatilidade (Evitar mercado morto)
             volatility_ok = adx[i] > adx_threshold
-           
-            if (trend_condition and pullback_condition and volatility_ok) or (reversion_condition):
+
+            if (trend_condition and pullback_condition and volatility_ok) or (
+                reversion_condition
+            ):
                 signal = True
             if signal:
                 # Definição de Risco
                 sl_dist = atr[i] * sl_mult
-                tp_dist = atr[i] * tp_mult # ✅ Alvo baseado em ATR
-               
+                tp_dist = atr[i] * tp_mult  # ✅ Alvo baseado em ATR
+
                 entry_price = close[i] * (1 + base_slippage)
                 stop_price = entry_price - sl_dist
                 target_price = entry_price + tp_dist
@@ -1320,7 +1768,7 @@ def fast_backtest_core(
                     entry_price = float(round(entry_price / tick_size) * tick_size)
                     stop_price = float(round(stop_price / tick_size) * tick_size)
                     target_price = float(round(target_price / tick_size) * tick_size)
-               
+
                 # Tamanho da posição (Risco Fixo 2%)
                 risk_amt = equity * risk_per_trade
                 if sl_dist > 0:
@@ -1335,15 +1783,17 @@ def fast_backtest_core(
                     else:
                         shares_raw = risk_amt / sl_dist
                         shares = np.floor(shares_raw / 100.0) * 100.0
-                        max_shares = np.floor((cash * 0.95) / entry_price / 100.0) * 100.0
+                        max_shares = (
+                            np.floor((cash * 0.95) / entry_price / 100.0) * 100.0
+                        )
                         if shares > max_shares:
                             shares = max_shares
                         if shares >= 100.0:
                             cost_fin = shares * entry_price
                             c_entry = cost_fin * transaction_cost_pct
-                            cash -= (cost_fin + c_entry)
+                            cash -= cost_fin + c_entry
                             position = shares
-       
+
         equity_curve[i] = equity
     # Métricas Finais
     # Métricas Finais
@@ -1352,32 +1802,46 @@ def fast_backtest_core(
     # ✅ Retorna tupla (Numba não suporta dicts)
     # Ordem: equity_curve, trades, wins, losses, final_return, win_rate, costs_paid
     return equity_curve, trades, wins, losses, final_return, win_rate, costs_paid
+
+
 # ===========================
 # FUNÇÃO PRINCIPAL DO BACKTEST
 # ===========================
-def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame) -> Dict[str, Any]:
+def backtest_params_on_df(
+    symbol: str, params: dict, df: pd.DataFrame
+) -> Dict[str, Any]:
     """Executa backtest com os parâmetros fornecidos"""
     if df is None or len(df) < 100:
         return {
             "total_return": -1.0,
             "calmar": -10.0,
             "total_trades": 0,
-            "equity_curve": [100000.0]
+            "equity_curve": [100000.0],
         }
-    close = df['close'].values.astype(np.float64)
-    high = df['high'].values.astype(np.float64)
-    low = df['low'].values.astype(np.float64)
+    close = df["close"].values.astype(np.float64)
+    high = df["high"].values.astype(np.float64)
+    low = df["low"].values.astype(np.float64)
     # --- INDICADORES ---
-    ema_s = pd.Series(close).ewm(span=params.get("ema_short", 9), adjust=False).mean().values
-    ema_l = pd.Series(close).ewm(span=params.get("ema_long", 21), adjust=False).mean().values
-   
+    ema_s = (
+        pd.Series(close)
+        .ewm(span=params.get("ema_short", 9), adjust=False)
+        .mean()
+        .values
+    )
+    ema_l = (
+        pd.Series(close)
+        .ewm(span=params.get("ema_long", 21), adjust=False)
+        .mean()
+        .values
+    )
+
     # RSI
     delta = pd.Series(close).diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / (loss + 1e-10)
     rsi = (100 - (100 / (1 + rs))).fillna(50).values
-    
+
     # RSI_2 (Larry Williams)
     delta_2 = pd.Series(close).diff()
     gain_2 = (delta_2.where(delta_2 > 0, 0)).rolling(window=2).mean()
@@ -1388,14 +1852,14 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame) -> Dict[s
     momentum = pd.Series(close).pct_change(periods=10).fillna(0).values
     # ADX e ATR CORRETOS
     adx, atr = calculate_adx(high, low, close, period=14)
-   
+
     # Debug: Estatísticas dos indicadores
     trend_up = ema_s > ema_l
     rsi_ok = rsi < params.get("rsi_low", 30)
     momentum_ok = momentum > params.get("mom_min", 0.0)
     adx_ok = adx > params.get("adx_threshold", 25)
-    buy_signals = (trend_up & (adx_ok | rsi_ok | momentum_ok))
-   
+    buy_signals = trend_up & (adx_ok | rsi_ok | momentum_ok)
+
     n_signals = np.sum(buy_signals)
     # ✅ ADX médio seguro
     if len(adx) > 50:
@@ -1411,8 +1875,9 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame) -> Dict[s
         f"📉 ADX_avg={adx_avg:.1f}"
     )
     # ✅ VOLUME PARA SLIPPAGE DINÂMICO e FILTROS
-    volume = df['volume'].values.astype(np.float64)
+    volume = df["volume"].values.astype(np.float64)
     volume_ma = pd.Series(volume).rolling(20).mean().fillna(0).values
+
     def _validate_params(p: dict) -> dict:
         es = int(p.get("ema_short", 9))
         el = int(p.get("ema_long", 21))
@@ -1431,11 +1896,25 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame) -> Dict[s
         base_s = float(p.get("base_slippage", 0.0035))
         trail_m = float(p.get("trail_atr_mult", 1.0))
         use_tr = bool(p.get("use_trailing", True))
-        return {"ema_short": es, "ema_long": el, "rsi_low": rl, "rsi_high": rh, "adx_threshold": adx_t, "mom_min": float(p.get("mom_min", 0.0) or 0.0), "sl_atr_multiplier": slm, "tp_mult": tpm, "base_slippage": base_s, "use_trailing": use_tr, "trail_atr_mult": trail_m}
+        return {
+            "ema_short": es,
+            "ema_long": el,
+            "rsi_low": rl,
+            "rsi_high": rh,
+            "adx_threshold": adx_t,
+            "mom_min": float(p.get("mom_min", 0.0) or 0.0),
+            "sl_atr_multiplier": slm,
+            "tp_mult": tpm,
+            "base_slippage": base_s,
+            "use_trailing": use_tr,
+            "trail_atr_mult": trail_m,
+        }
+
     params = _validate_params(params)
     # ✅ FIX: fast_backtest_core retorna tupla (equity_curve, trades, wins, losses, final_return, win_rate)
     try:
         from utils import AssetInspector
+
         ai = AssetInspector.detect(symbol)
         asset_type = 1 if ai.get("type") == "FUTURE" else 0
         pv = float(ai.get("point_value", 0.0))
@@ -1444,37 +1923,54 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame) -> Dict[s
         asset_type = 0
         pv, ts = 0.0, 0.01
     import config as _cfg
-    equity_arr, trades, wins, losses, total_return, win_rate, costs_paid = fast_backtest_core(
-        close, high, low, volume, volume_ma,
-        ema_s, ema_l, rsi, rsi_2, adx, momentum, atr,
-        params["rsi_low"],
-        params["rsi_high"],
-        params["adx_threshold"],
-        params["mom_min"],
-        params["sl_atr_multiplier"],
-        params["tp_mult"],
-        params["base_slippage"],
-        0.01,
-        params["use_trailing"],
-        params["trail_atr_mult"],
-        asset_type,
-        pv,
-        ts,
-        float(getattr(_cfg, "ACTION_COST_PCT", 0.00055)),
-        float(getattr(_cfg, "FUTURE_FEE_PER_CONTRACT", 1.0))
+
+    equity_arr, trades, wins, losses, total_return, win_rate, costs_paid = (
+        fast_backtest_core(
+            close,
+            high,
+            low,
+            volume,
+            volume_ma,
+            ema_s,
+            ema_l,
+            rsi,
+            rsi_2,
+            adx,
+            momentum,
+            atr,
+            params["rsi_low"],
+            params["rsi_high"],
+            params["adx_threshold"],
+            params["mom_min"],
+            params["sl_atr_multiplier"],
+            params["tp_mult"],
+            params["base_slippage"],
+            0.01,
+            params["use_trailing"],
+            params["trail_atr_mult"],
+            asset_type,
+            pv,
+            ts,
+            float(getattr(_cfg, "ACTION_COST_PCT", 0.00055)),
+            float(getattr(_cfg, "FUTURE_FEE_PER_CONTRACT", 1.0)),
+        )
     )
     # ✅ CORREÇÃO: Chama a função direto, sem import
     metrics = compute_advanced_metrics(equity_arr.tolist())
-    metrics.update({
-        "total_trades": trades,
-        "wins": wins,
-        "losses": losses,
-        "win_rate": wins / trades if trades > 0 else 0.0,
-        "costs_paid": float(costs_paid),
-        "equity_curve": equity_arr.tolist()
-    })
-   
+    metrics.update(
+        {
+            "total_trades": trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": wins / trades if trades > 0 else 0.0,
+            "costs_paid": float(costs_paid),
+            "equity_curve": equity_arr.tolist(),
+        }
+    )
+
     return metrics
+
+
 def is_valid_equity_curve(eq, min_len=50) -> bool:
     if eq is None:
         return False
@@ -1483,6 +1979,8 @@ def is_valid_equity_curve(eq, min_len=50) -> bool:
     if len(eq) < min_len:
         return False
     return True
+
+
 def _auto_discover_futures():
     try:
         mapping = utils.update_futures_mappings()
@@ -1490,69 +1988,88 @@ def _auto_discover_futures():
             print(f"[INFO] Auto-Discovery de Futuros aplicado: {mapping}", flush=True)
     except Exception as e:
         print(f"[WARN] Auto-Discovery falhou: {e}", flush=True)
+
+
 # ===========================
 # WORKER WFO
 # ===========================
-def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
-               train_period: int, test_period: int) -> Dict[str, Any]:
+def worker_wfo(
+    sym: str,
+    bars: int,
+    maxevals: int,
+    wfo_windows: int,
+    train_period: int,
+    test_period: int,
+) -> Dict[str, Any]:
     """Worker WFO com reconexão MT5 automática"""
     out = {"symbol": sym, "status": "ok", "wfo_windows": []}
-   
+
     try:
         df_full = load_data_polygon(sym, bars)
-       
+
         if not is_valid_dataframe(df_full):
             return {"symbol": sym, "error": "no_data"}
-       
+
         df_full = df_full.sort_index()
         n = len(df_full)
-       
+
         if n < (train_period + test_period):
             return {"symbol": sym, "error": "insufficient_data"}
-       
+
         step = test_period
         wins = []
-       
+
         for i in range(wfo_windows):
             train_start = i * step
             train_end = train_start + train_period
             test_end = train_end + test_period
-           
+
             if test_end > n:
                 break
-           
+
             df_train = df_full.iloc[train_start:train_end].copy()
             df_test = df_full.iloc[train_end:test_end].copy()
-           
+
             if df_train.empty or df_test.empty:
                 continue
-           
+
             ml_model = None
             best_params = {}
-           
+
             try:
                 from optimizer_optuna import optimize_with_optuna, backtest_params_on_df
-               
+
                 # ✅ Optional: Retrain ML Model per Fold if desired (Uncomment to enable)
                 # from optimizer_optuna import train_ml_signal_boost
                 # ml_model_fold = train_ml_signal_boost(df_train)
                 # But optimize_with_optuna already trains it internally on df_train passed to it.
                 # Use that model.
-               
+
                 if os.getenv("XP3_DISABLE_OPTUNA", "0") == "1":
-                    res = {"status": "NO_VALID_TRIALS", "reason": "disabled_by_env", "best_params": {}, "ml_model": None}
+                    res = {
+                        "status": "NO_VALID_TRIALS",
+                        "reason": "disabled_by_env",
+                        "best_params": {},
+                        "ml_model": None,
+                    }
                 else:
-                    logger.info(f"🧪 {sym}: Janela {i+1}/{wfo_windows} - Iniciando Optuna...")
-                    res = optimize_with_optuna(sym, df_train, n_trials=120, timeout=1200)
-               
+                    logger.info(
+                        f"🧪 {sym}: Janela {i+1}/{wfo_windows} - Iniciando Optuna..."
+                    )
+                    res = optimize_with_optuna(
+                        sym, df_train, n_trials=250, timeout=3600
+                    )
+
                 if res.get("status") == "SUCCESS":
                     best_params = res.get("best_params", {})
                     ml_model = res.get("ml_model", None)
                     logger.info(f"{sym}: ✅ Parâmetros otimizados: {best_params}")
                     try:
                         if _is_generic_params(best_params):
-                            logger.warning(f"🔍 {sym}: Parâmetros genéricos detectados, expandindo busca...")
-                            df_ext = df_full.iloc[-max(test_period*4, 800):]
+                            logger.warning(
+                                f"🔍 {sym}: Parâmetros genéricos detectados, expandindo busca..."
+                            )
+                            df_ext = df_full.iloc[-max(test_period * 4, 800) :]
                             ema_short_grid = list(range(8, 31, 3))
                             ema_long_grid = [60, 72, 90, 110, 125, 140]
                             best = None
@@ -1571,27 +2088,74 @@ def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
                         pass
                 else:
                     reason = res.get("reason", res.get("status", "Unknown"))
-                    logger.warning(f"{sym}: ⚠️ Optuna sem resultado válido nesta janela ({reason})")
+                    logger.warning(
+                        f"{sym}: ⚠️ Optuna sem resultado válido nesta janela ({reason})"
+                    )
                     if len(wins) > 0:
-                        logger.warning(f"{sym}: Usando parâmetros da melhor janela anterior")
+                        logger.warning(
+                            f"{sym}: Usando parâmetros da melhor janela anterior"
+                        )
                         best_params = wins[-1]["best_params"]
                         ml_model = wins[-1].get("ml_model")
                     else:
-                        logger.warning(f"{sym}: Todas trials pruned — forçando grid search estendido")
+                        logger.warning(
+                            f"{sym}: Todas trials pruned — forçando grid search estendido"
+                        )
                         df_ext = load_data_polygon(sym, 8000)
                         picked = None
                         if df_ext is not None and len(df_ext) >= 300:
                             ema_short_grid = list(range(8, 51, 3))
                             ema_long_grid = list(range(60, 161, 10))
                             try:
+                                delta = pd.Series(df_ext["close"]).diff()
+                                gain = (
+                                    (delta.where(delta > 0, 0))
+                                    .rolling(window=14)
+                                    .mean()
+                                )
+                                loss = (
+                                    (-delta.where(delta < 0, 0))
+                                    .rolling(window=14)
+                                    .mean()
+                                )
+                                rs = gain / (loss + 1e-10)
+                                rsi_series = (100 - (100 / (1 + rs))).fillna(50).values
+                                rsi_low_dyn = int(
+                                    np.clip(
+                                        np.percentile(rsi_series[-150:], 30), 25, 40
+                                    )
+                                )
+                                rsi_high_dyn = int(
+                                    np.clip(
+                                        np.percentile(rsi_series[-150:], 70), 60, 85
+                                    )
+                                )
+                                adx_vals_dyn, atr_vals_dyn = calculate_adx(
+                                    df_ext["high"].values,
+                                    df_ext["low"].values,
+                                    df_ext["close"].values,
+                                    period=14,
+                                )
+                                adx_thr_dyn = float(
+                                    np.clip(np.median(adx_vals_dyn[-150:]), 15, 35)
+                                )
+                                vol_proxy = float(
+                                    np.mean(atr_vals_dyn[-150:])
+                                    / max(np.mean(df_ext["close"].values[-150:]), 1e-6)
+                                )
+                                sl_mult_dyn = 3.5 if vol_proxy > 0.02 else 2.5
+                                tp_mult_dyn = 3.0
                                 for es in ema_short_grid:
                                     for el in ema_long_grid:
                                         cparams = {
-                                            "ema_short": es, "ema_long": el,
-                                            "rsi_low": 30, "rsi_high": 70,
-                                            "adx_threshold": 25,
-                                            "sl_atr_multiplier": 2.5,
-                                            "tp_mult": 5.0
+                                            "ema_short": es,
+                                            "ema_long": el,
+                                            "rsi_low": rsi_low_dyn,
+                                            "rsi_high": rsi_high_dyn,
+                                            "adx_threshold": adx_thr_dyn,
+                                            "mom_min": 0.0,
+                                            "sl_atr_multiplier": sl_mult_dyn,
+                                            "tp_mult": tp_mult_dyn,
                                         }
                                         m2 = backtest_params_on_df(sym, cparams, df_ext)
                                         score2 = float(m2.get("calmar", 0.0) or 0.0)
@@ -1603,7 +2167,9 @@ def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
                             best_params = picked[1]
                             ml_model = None
                         else:
-                            elite = getattr(config, "ELITE_SYMBOLS", {}) if config else {}
+                            elite = (
+                                getattr(config, "ELITE_SYMBOLS", {}) if config else {}
+                            )
                             if isinstance(elite, dict) and sym in elite:
                                 ep = elite.get(sym) or {}
                                 best_params = {
@@ -1612,8 +2178,10 @@ def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
                                     "rsi_low": int(ep.get("rsi_low", 37)),
                                     "rsi_high": int(ep.get("rsi_high", 73)),
                                     "adx_threshold": float(ep.get("adx_threshold", 13)),
-                                    "sl_atr_multiplier": float(ep.get("sl_atr_multiplier", 3.0)),
-                                    "tp_mult": float(ep.get("tp_mult", 3.0))
+                                    "sl_atr_multiplier": float(
+                                        ep.get("sl_atr_multiplier", 3.0)
+                                    ),
+                                    "tp_mult": float(ep.get("tp_mult", 3.0)),
                                 }
                             else:
                                 best_params = _ensure_non_generic(sym, {})
@@ -1621,39 +2189,61 @@ def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
             except Exception as e:
                 logger.error(f"{sym}: ❌ OPTUNA FALHOU: {e}")
                 if len(wins) > 0:
-                    logger.warning(f"{sym}: Usando parâmetros da melhor janela anterior")
+                    logger.warning(
+                        f"{sym}: Usando parâmetros da melhor janela anterior"
+                    )
                     best_params = wins[-1]["best_params"]
                     ml_model = wins[-1].get("ml_model")
                 else:
                     try:
-                        df_use = df_full.iloc[-max(test_period*2, 400):] if df_full is not None else None
+                        df_use = (
+                            df_full.iloc[-max(test_period * 2, 400) :]
+                            if df_full is not None
+                            else None
+                        )
                         if df_use is not None and len(df_use) >= 200:
                             ema_short_grid = list(range(8, 31, 3))
                             ema_long_grid = [60, 72, 90, 110, 125, 140]
-                            delta = pd.Series(df_use['close']).diff()
+                            delta = pd.Series(df_use["close"]).diff()
                             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                            loss = (
+                                (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                            )
                             rs = gain / (loss + 1e-10)
                             rsi_series = (100 - (100 / (1 + rs))).fillna(50).values
-                            rsi_low = int(np.clip(np.percentile(rsi_series[-150:], 30), 25, 40))
-                            rsi_high = int(np.clip(np.percentile(rsi_series[-150:], 70), 60, 85))
-                            adx_vals, atr_vals = calculate_adx(
-                                df_use['high'].values, df_use['low'].values, df_use['close'].values, period=14
+                            rsi_low = int(
+                                np.clip(np.percentile(rsi_series[-150:], 30), 25, 40)
                             )
-                            adx_threshold = float(np.clip(np.median(adx_vals[-150:]), 15, 35))
-                            vol_proxy = float(np.mean(atr_vals[-150:]) / max(np.mean(df_use['close'].values[-150:]), 1e-6))
+                            rsi_high = int(
+                                np.clip(np.percentile(rsi_series[-150:], 70), 60, 85)
+                            )
+                            adx_vals, atr_vals = calculate_adx(
+                                df_use["high"].values,
+                                df_use["low"].values,
+                                df_use["close"].values,
+                                period=14,
+                            )
+                            adx_threshold = float(
+                                np.clip(np.median(adx_vals[-150:]), 15, 35)
+                            )
+                            vol_proxy = float(
+                                np.mean(atr_vals[-150:])
+                                / max(np.mean(df_use["close"].values[-150:]), 1e-6)
+                            )
                             sl_mult = 3.5 if vol_proxy > 0.02 else 2.5
                             tp_mult = 3.0
                             best = None
                             for es in ema_short_grid:
                                 for el in ema_long_grid:
                                     cparams = {
-                                        "ema_short": es, "ema_long": el,
-                                        "rsi_low": rsi_low, "rsi_high": rsi_high,
+                                        "ema_short": es,
+                                        "ema_long": el,
+                                        "rsi_low": rsi_low,
+                                        "rsi_high": rsi_high,
                                         "adx_threshold": adx_threshold,
                                         "mom_min": 0.0,
                                         "sl_atr_multiplier": sl_mult,
-                                        "tp_mult": tp_mult
+                                        "tp_mult": tp_mult,
                                     }
                                     m = backtest_params_on_df(sym, cparams, df_use)
                                     score = float(m.get("calmar", 0.0) or 0.0)
@@ -1675,44 +2265,53 @@ def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
                                 "rsi_low": int(ep.get("rsi_low", 37)),
                                 "rsi_high": int(ep.get("rsi_high", 73)),
                                 "adx_threshold": float(ep.get("adx_threshold", 13)),
-                                "sl_atr_multiplier": float(ep.get("sl_atr_multiplier", 3.0)),
-                                "tp_mult": float(ep.get("tp_mult", 3.0))
+                                "sl_atr_multiplier": float(
+                                    ep.get("sl_atr_multiplier", 3.0)
+                                ),
+                                "tp_mult": float(ep.get("tp_mult", 3.0)),
                             }
                         else:
                             best_params = _ensure_non_generic(sym, {})
                     ml_model = None
-           
+
             # ✅ Validar no OOS com ML Model se disponível
             # No bloco de métricas ou logs:
 
-            test_res = backtest_params_on_df(sym, best_params, df_test, ml_model=ml_model)
+            test_res = backtest_params_on_df(
+                sym, best_params, df_test, ml_model=ml_model
+            )
             curve = test_res.get("equity_curve", None)
-    
+
             if isinstance(curve, np.ndarray):
                 curve_list = curve.tolist()
             elif isinstance(curve, list):
                 curve_list = curve
             else:
-                curve_list = [100000.0] # Fallback se for string ou None
-           
-            wins.append({
-                "best_params": best_params,
-                "ml_model": ml_model,
-                "test_metrics": test_res,
-                "equity_curve": test_res.get("equity_curve", [])
-            })
-       
+                curve_list = [100000.0]  # Fallback se for string ou None
+
+            wins.append(
+                {
+                    "best_params": best_params,
+                    "ml_model": ml_model,
+                    "test_metrics": test_res,
+                    "equity_curve": test_res.get("equity_curve", []),
+                }
+            )
+
         if not wins:
             return {"symbol": sym, "error": "wfo_no_windows"}
-       
+
         best_win = max(wins, key=lambda w: w["test_metrics"].get("calmar", -100))
         cand_params = best_win["best_params"]
         cand_metrics = best_win["test_metrics"]
         try:
-            elite_json_latest = os.path.join(OPT_OUTPUT_DIR, "elite_symbols_latest.json")
+            elite_json_latest = os.path.join(
+                OPT_OUTPUT_DIR, "elite_symbols_latest.json"
+            )
             baseline_params = None
             if os.path.exists(elite_json_latest):
                 import json
+
                 with open(elite_json_latest, "r", encoding="utf-8") as f:
                     payload = json.load(f)
                 elite_dict = (payload or {}).get("elite_symbols", {})
@@ -1725,7 +2324,9 @@ def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
                         "rsi_high": int(b.get("rsi_high", 70)),
                         "adx_threshold": float(b.get("adx_threshold", 25)),
                         "mom_min": float(b.get("mom_min", 0.0) or 0.0),
-                        "sl_atr_multiplier": float(b.get("sl_atr_multiplier", 2.5) or 2.5),
+                        "sl_atr_multiplier": float(
+                            b.get("sl_atr_multiplier", 2.5) or 2.5
+                        ),
                         "tp_mult": float(b.get("tp_mult", 5.0) or 5.0),
                     }
             if baseline_params is None:
@@ -1739,21 +2340,41 @@ def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
                         "rsi_high": int(ep.get("rsi_high", 70)),
                         "adx_threshold": float(ep.get("adx_threshold", 25)),
                         "mom_min": float(ep.get("mom_min", 0.0) or 0.0),
-                        "sl_atr_multiplier": float(ep.get("sl_atr_multiplier", 2.5) or 2.5),
+                        "sl_atr_multiplier": float(
+                            ep.get("sl_atr_multiplier", 2.5) or 2.5
+                        ),
                         "tp_mult": float(ep.get("tp_mult", 5.0) or 5.0),
                     }
             if baseline_params:
-                ema_changed = (int(cand_params.get("ema_short", 9)) != int(baseline_params.get("ema_short", 9))) or (int(cand_params.get("ema_long", 21)) != int(baseline_params.get("ema_long", 21)))
+                ema_changed = (
+                    int(cand_params.get("ema_short", 9))
+                    != int(baseline_params.get("ema_short", 9))
+                ) or (
+                    int(cand_params.get("ema_long", 21))
+                    != int(baseline_params.get("ema_long", 21))
+                )
                 if ema_changed:
-                    base_metrics = backtest_params_on_df(sym, baseline_params, df_test, ml_model=best_win.get("ml_model"))
+                    base_metrics = backtest_params_on_df(
+                        sym, baseline_params, df_test, ml_model=best_win.get("ml_model")
+                    )
                     base_wr = float(base_metrics.get("win_rate", 0.0) or 0.0)
                     new_wr = float(cand_metrics.get("win_rate", 0.0) or 0.0)
                     denom = base_wr if base_wr > 1e-9 else 1e-9
                     improvement = (new_wr - base_wr) / denom
                     if improvement < 0.15:
-                        cand_params["ema_short"] = int(baseline_params.get("ema_short", cand_params.get("ema_short", 9)))
-                        cand_params["ema_long"] = int(baseline_params.get("ema_long", cand_params.get("ema_long", 21)))
-                        cand_metrics = backtest_params_on_df(sym, cand_params, df_test, ml_model=best_win.get("ml_model"))
+                        cand_params["ema_short"] = int(
+                            baseline_params.get(
+                                "ema_short", cand_params.get("ema_short", 9)
+                            )
+                        )
+                        cand_params["ema_long"] = int(
+                            baseline_params.get(
+                                "ema_long", cand_params.get("ema_long", 21)
+                            )
+                        )
+                        cand_metrics = backtest_params_on_df(
+                            sym, cand_params, df_test, ml_model=best_win.get("ml_model")
+                        )
         except Exception:
             pass
         out["selected_params"] = cand_params
@@ -1766,16 +2387,20 @@ def worker_wfo(sym: str, bars: int, maxevals: int, wfo_windows: int,
             f"🔢 Trades={best_win['test_metrics'].get('total_trades', 0)} | "
             f"🛡️ Max DD={best_win['test_metrics'].get('max_drawdown', 0):.2%}"
         )
-       
+
         return out
-       
+
     except Exception as e:
         logger.exception(f"WFO falhou para {sym}")
         return {"symbol": sym, "error": str(e)}
+
+
 # ===========================
 # MONTE CARLO
 # ===========================
-def run_monte_carlo_stress(equity_curve: List[float], n_simulations: int = 1000, ibov_adx: float = 25) -> Dict[str, float]: # ✅ 1000 sims
+def run_monte_carlo_stress(
+    equity_curve: List[float], n_simulations: int = 1000, ibov_adx: float = 25
+) -> Dict[str, float]:  # ✅ 1000 sims
     """
     Monte Carlo com cenários B3:
     - Crash: IBOV -20% (bear market)
@@ -1783,56 +2408,69 @@ def run_monte_carlo_stress(equity_curve: List[float], n_simulations: int = 1000,
     - Rally: ADX > 30 (bull run)
     """
     if not is_valid_equity_curve(equity_curve, min_len=50):
-        return {"win_rate": 0.0, "calmar_avg": 0.0, "calmar_median": 0.0,
-                "calmar_5th": 0.0, "max_dd_95": 1.0}
-   
+        return {
+            "win_rate": 0.0,
+            "calmar_avg": 0.0,
+            "calmar_median": 0.0,
+            "calmar_5th": 0.0,
+            "max_dd_95": 1.0,
+        }
+
     equity_curve = np.asarray(equity_curve, dtype=np.float64)
     returns = np.diff(equity_curve) / equity_curve[:-1]
     n_bars = len(returns)
-   
+
     # ✅ CENÁRIOS B3 (Atualizado Phase 2)
     # Crash: Quedas > 2% (IBOV -20%)
     # Gaps: Retornos < -5% (Gap de baixa violento)
     stock_returns = returns
     stress_scenarios = {
-        'crash': stock_returns[stock_returns < -0.02],
-        'gaps': stock_returns[stock_returns < -0.05], # ✅ Novo Cenario: Gaps de Baixa
-        'rally': stock_returns[stock_returns > 0.025],
-        'sideways': stock_returns[abs(stock_returns) < 0.003]
+        "crash": stock_returns[stock_returns < -0.02],
+        "gaps": stock_returns[stock_returns < -0.05],  # ✅ Novo Cenario: Gaps de Baixa
+        "rally": stock_returns[stock_returns > 0.025],
+        "sideways": stock_returns[abs(stock_returns) < 0.003],
     }
     try:
         # Injeta retorno real de 2020 como cenário de crash
         ibov_2020 = get_ibov_data(start="2020-01-01", end="2020-12-31")
         if ibov_2020 is not None and len(ibov_2020) > 50:
-            r_2020 = ibov_2020['close'].pct_change().dropna().values
-            stress_scenarios['crash_real'] = r_2020[r_2020 < -0.01]
+            r_2020 = ibov_2020["close"].pct_change().dropna().values
+            stress_scenarios["crash_real"] = r_2020[r_2020 < -0.01]
     except Exception:
         pass
-   
+
     # ✅ DISTRIBUIÇÃO DE CENÁRIOS baseada no ADX do IBOV
     # Se ADX < 15, aumenta risco de Crash (mercado fraco vira bear rapido)
     is_weak_trend = ibov_adx < 15
-   
+
     scenario_weights = {
-        'crash': 0.25 if is_weak_trend else 0.10,
-        'gaps': 0.05,
-        'rally': 0.15 if ibov_adx > 25 else 0.10,
-        'sideways': 0.40 if is_weak_trend else 0.25
+        "crash": 0.25 if is_weak_trend else 0.10,
+        "gaps": 0.05,
+        "rally": 0.15 if ibov_adx > 25 else 0.10,
+        "sideways": 0.40 if is_weak_trend else 0.25,
     }
     # ✅ Normalização
     _w_sum = sum(scenario_weights.values())
     scenario_weights = {k: v / _w_sum for k, v in scenario_weights.items()}
-   
+
     calmars, max_dds, wins = [], [], 0
-   
+
     for sim_idx in range(n_simulations):
         # ✅ 30% das sims usam cenários estressados
-        if np.random.random() < 0.30 and any(len(v) > 10 for v in stress_scenarios.values()):
-            keys = list(scenario_weights.keys()) + (['crash'] if 'crash_real' not in stress_scenarios else ['crash_real'])
+        if np.random.random() < 0.30 and any(
+            len(v) > 10 for v in stress_scenarios.values()
+        ):
+            keys = list(scenario_weights.keys()) + (
+                ["crash"] if "crash_real" not in stress_scenarios else ["crash_real"]
+            )
             probs = list(scenario_weights.values()) + [0.10]
-            probs = np.array(probs); probs = probs / probs.sum()
+            probs = np.array(probs)
+            probs = probs / probs.sum()
             scenario = np.random.choice(keys, p=probs)
-            base = stress_scenarios.get(scenario, stress_scenarios.get('crash', stock_returns[stock_returns < -0.02]))
+            base = stress_scenarios.get(
+                scenario,
+                stress_scenarios.get("crash", stock_returns[stock_returns < -0.02]),
+            )
             base_arr = np.asarray(base)
             if base_arr is None or base_arr.size == 0:
                 base_arr = returns
@@ -1845,23 +2483,23 @@ def run_monte_carlo_stress(equity_curve: List[float], n_simulations: int = 1000,
                 start_idx = np.random.randint(0, max(1, n_bars - block_size))
                 block = returns[start_idx : start_idx + block_size]
                 sim_returns.extend(block)
-       
+
         sim_returns = np.array(sim_returns[:n_bars])
         sim_equity = np.cumprod(1 + sim_returns) * equity_curve[0]
-       
+
         peak = np.maximum.accumulate(sim_equity)
         dd = (peak - sim_equity) / peak
         max_dd = float(np.max(dd)) if len(dd) > 0 else 0.0
         max_dds.append(max_dd)
-       
+
         total_ret = sim_equity[-1] / sim_equity[0] - 1
         wins += int(total_ret > 0)
-       
+
         years = n_bars / (252 * 28)
         ann_ret = (1 + total_ret) ** (1 / years) - 1 if years > 0 else total_ret
         calmar = ann_ret / max_dd if max_dd > 0 else 0.0
         calmars.append(calmar)
-   
+
     return {
         "win_rate": wins / n_simulations,
         "calmar_avg": float(np.mean(calmars)),
@@ -1869,8 +2507,9 @@ def run_monte_carlo_stress(equity_curve: List[float], n_simulations: int = 1000,
         "calmar_5th": float(np.percentile(calmars, 5)),
         "calmar_95th": float(np.percentile(calmars, 95)),
         "max_dd_95": float(np.percentile(max_dds, 95)),
-        "max_dd_99": float(np.percentile(max_dds, 99))
+        "max_dd_99": float(np.percentile(max_dds, 99)),
     }
+
 
 def apply_safety_guardrails(final_elite):
     """
@@ -1879,45 +2518,49 @@ def apply_safety_guardrails(final_elite):
     e limitando a exposição a ativos de risco.
     """
     # TIER 1: DEFESA (Obrigatório ter peso relevante)
-    TIER_DEFENSIVE = ['VIVT3', 'BBDC4', 'BBAS3', 'B3SA3', 'ITUB4', 'CPLE6', 'TAEE11' ]
+    TIER_DEFENSIVE = ["VIVT3", "BBDC4", "BBAS3", "B3SA3", "ITUB4", "CPLE6", "TAEE11"]
     MIN_WEIGHT_DEFENSIVE = 0.08  # 8%
 
     # TIER 2: COMMODITIES (Obrigatório não zerar se houver tendência)
-    TIER_COMMODITIES = ['PETR4', 'PRIO3', 'VALE3', 'GGBR4' ]
+    TIER_COMMODITIES = ["PETR4", "PRIO3", "VALE3", "GGBR4"]
     MIN_WEIGHT_COMMODITY = 0.05  # 5%
 
     # TIER 3: RISCO / SMALL CAPS (Varejo, Tech, Educação, Siderurgia não-Líder)
     # Todo o resto cai aqui.
-    MAX_WEIGHT_RISK = 0.04       # Teto máximo de 4%
+    MAX_WEIGHT_RISK = 0.04  # Teto máximo de 4%
 
-    print("[GUARDRAILS] Aplicando Travas de Segurança..." )
+    print("[GUARDRAILS] Aplicando Travas de Segurança...")
 
-    for symbol in  final_elite:
-        current_weight = final_elite[symbol].get('weight', 0.0 )
-        
+    for symbol in final_elite:
+        current_weight = final_elite[symbol].get("weight", 0.0)
+
         # Regra 1: Se for Defensiva, garante o piso
-        if symbol in  TIER_DEFENSIVE:
-            if  current_weight < MIN_WEIGHT_DEFENSIVE:
-                final_elite[symbol]['weight' ] = MIN_WEIGHT_DEFENSIVE
-        
+        if symbol in TIER_DEFENSIVE:
+            if current_weight < MIN_WEIGHT_DEFENSIVE:
+                final_elite[symbol]["weight"] = MIN_WEIGHT_DEFENSIVE
+
         # Regra 2: Se for Commodity, garante o piso
-        elif symbol in  TIER_COMMODITIES:
-            if  current_weight < MIN_WEIGHT_COMMODITY:
-                final_elite[symbol]['weight' ] = MIN_WEIGHT_COMMODITY
-        
+        elif symbol in TIER_COMMODITIES:
+            if current_weight < MIN_WEIGHT_COMMODITY:
+                final_elite[symbol]["weight"] = MIN_WEIGHT_COMMODITY
+
         # Regra 3: Se for qualquer outra coisa (Risco), aplica o teto
-        else :
-            if  current_weight > MAX_WEIGHT_RISK:
-                final_elite[symbol]['weight' ] = MAX_WEIGHT_RISK
+        else:
+            if current_weight > MAX_WEIGHT_RISK:
+                final_elite[symbol]["weight"] = MAX_WEIGHT_RISK
 
     # Regra 4: Normalização Final (Soma deve ser 1.0)
-    total_w = sum(x['weight'] for x in  final_elite.values())
-    if total_w > 0 :
-        factor = 1.0  / total_w
-        for symbol in  final_elite:
-            final_elite[symbol]['weight'] = round(final_elite[symbol]['weight'] * factor, 4 )
-            
-    return  final_elite
+    total_w = sum(x["weight"] for x in final_elite.values())
+    if total_w > 0:
+        factor = 1.0 / total_w
+        for symbol in final_elite:
+            final_elite[symbol]["weight"] = round(
+                final_elite[symbol]["weight"] * factor, 4
+            )
+
+    return final_elite
+
+
 # =========================================================
 # 5. EXECUÇÃO PRINCIPAL (PROCESS POOL)
 # =========================================================
@@ -1925,11 +2568,18 @@ def process_symbol_wrapper(args):
     """Wrapper para ProcessPoolExecutor"""
     sym, config_bt = args
     try:
-        return worker_wfo(sym, config_bt["BARS"], config_bt["MAX_EVALS"],
-                          config_bt["WFO_WINDOWS"], config_bt["TRAIN_PERIOD"],
-                          config_bt["TEST_PERIOD"])
+        return worker_wfo(
+            sym,
+            config_bt["BARS"],
+            config_bt["MAX_EVALS"],
+            config_bt["WFO_WINDOWS"],
+            config_bt["TRAIN_PERIOD"],
+            config_bt["TEST_PERIOD"],
+        )
     except Exception as e:
         return {"symbol": sym, "error": str(e), "status": "error"}
+
+
 def run_optimizer():
     """
     Função Mestre:
@@ -1939,17 +2589,26 @@ def run_optimizer():
     4. Aloca Portfólio (Markowitz)
     5. Gera Relatórios
     """
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print(f"[STARTUP] PID: {os.getpid()} - Iniciando Otimizador...", flush=True)
     print("[RUN] INICIANDO OTIMIZADOR XP3 v5", flush=True)
     print(f"[INFO] Data: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}", flush=True)
-    print(f"[MODE] {'SANDBOX (Rápido)' if SANDBOX_MODE else 'PRODUÇÃO (Lento)'}", flush=True)
+    print(
+        f"[MODE] {'SANDBOX (Rápido)' if SANDBOX_MODE else 'PRODUÇÃO (Lento)'}",
+        flush=True,
+    )
     print("[DEBUG] Entrou em run_optimizer()", flush=True)
-    
+
     # Teste config
-    print("[DEBUG] ELITE_BLUE_CHIPS =", getattr(config, "ELITE_BLUE_CHIPS", "NÃO DEFINIDO"), flush=True)
-    print("[DEBUG] SECTOR_MAP keys:", len(getattr(config, "SECTOR_MAP", {})), flush=True)
-    
+    print(
+        "[DEBUG] ELITE_BLUE_CHIPS =",
+        getattr(config, "ELITE_BLUE_CHIPS", "NÃO DEFINIDO"),
+        flush=True,
+    )
+    print(
+        "[DEBUG] SECTOR_MAP keys:", len(getattr(config, "SECTOR_MAP", {})), flush=True
+    )
+
     try:
         print("[INIT] Tentando conectar ao MetaTrader 5...", flush=True)
         mt5_connected = try_mt5_connection(timeout_seconds=5)
@@ -1961,7 +2620,7 @@ def run_optimizer():
         _auto_discover_futures()
     except Exception:
         pass
-    
+
     print("[DEBUG] Indo para dados globais (IBOV)...", flush=True)
     mt5_connected = try_mt5_connection(timeout_seconds=10)
     if not mt5_connected:
@@ -1978,15 +2637,31 @@ def run_optimizer():
     logger.info("[INFO] Baixando dados globais (IBOV)...")
     ibov_df = get_ibov_data()
     try:
-        print(f"[DATA] IBOV DF: {'OK' if (ibov_df is not None and not ibov_df.empty) else 'FALHA'}", flush=True)
+        print(
+            f"[DATA] IBOV DF: {'OK' if (ibov_df is not None and not ibov_df.empty) else 'FALHA'}",
+            flush=True,
+        )
     except Exception:
         print("[DATA] IBOV DF: FALHA (exc ao validar)", flush=True)
-   
+
     # 2. SELEÇÃO DE ATIVOS
     logger.info("[INFO] Filtrando universo de ativos...")
     all_symbols = load_all_symbols()
+    # ✅ Filtro opcional por variável de ambiente (limitar a símbolos específicos)
+    try:
+        target_env = os.getenv("XP3_TARGET_SYMBOLS", "").strip()
+        if target_env:
+            requested = [s.strip().upper() for s in target_env.split(",") if s.strip()]
+            if requested:
+                all_symbols = [s for s in all_symbols if s in requested]
+                print(
+                    f"[FILTER] Limitando execução a {len(all_symbols)} símbolo(s): {', '.join(all_symbols)}",
+                    flush=True,
+                )
+    except Exception:
+        pass
     valid_symbols = []
-    valid_symbols_info = {} # ✅ Guarda métricas de liquidez
+    valid_symbols_info = {}  # ✅ Guarda métricas de liquidez
     rejected = []
     all_liquidity = {}  # symbol -> avg_fin
     elite_blue = []
@@ -1994,7 +2669,7 @@ def run_optimizer():
         elite_blue = getattr(config, "ELITE_BLUE_CHIPS", [])
     except Exception:
         elite_blue = []
-   
+
     # Check Liquidity (Serial é rápido o suficiente e mais seguro para MT5)
     print(f" Verificando liquidez de {len(all_symbols)} ativos...", flush=True)
     pbar = tqdm(all_symbols, desc="Liquidez/Beta", unit="sym")
@@ -2018,9 +2693,11 @@ def run_optimizer():
             valid_symbols_info[sym] = metrics
         if not is_ok:
             rejected.append({"symbol": sym, "reason": reason})
-           
+
     # Salva rejeitados iniciais
-    pd.DataFrame(rejected).to_csv(os.path.join(OPT_OUTPUT_DIR, "initial_rejected_assets.csv"), index=False)
+    pd.DataFrame(rejected).to_csv(
+        os.path.join(OPT_OUTPUT_DIR, "initial_rejected_assets.csv"), index=False
+    )
     # Garante inclusão dos blue chips obrigatórios
     for bs in elite_blue:
         if bs not in valid_symbols:
@@ -2037,7 +2714,7 @@ def run_optimizer():
             except Exception:
                 valid_symbols.append(bs)
                 valid_symbols_info[bs] = {"avg_fin": 20_000_000}
-    
+
     # ✅ Fallback automático: se nenhum ativo passar o filtro de liquidez absoluto (ex.: volume do MT5 em tick_volume),
     # usa threshold relativo (quantil) para aprovar um universo mínimo e evitar "0 ativos".
     if len(valid_symbols) == 0 and all_liquidity:
@@ -2052,35 +2729,60 @@ def run_optimizer():
             f"[WARN] Nenhum ativo passou o filtro absoluto de liquidez. "
             f"Aplicando fallback por quantil: pct={pct:.2f} limiar_avg_fin={thr:.2f}"
         )
-        for sym, af in sorted(all_liquidity.items(), key=lambda kv: kv[1], reverse=True):
+        for sym, af in sorted(
+            all_liquidity.items(), key=lambda kv: kv[1], reverse=True
+        ):
             if af >= thr:
                 valid_symbols.append(sym)
                 valid_symbols_info[sym] = valid_symbols_info.get(sym, {"avg_fin": af})
         # garante pelo menos 20 ativos (se existirem) para o otimizador ter universo suficiente
         if len(valid_symbols) < 20:
-            top_more = [s for s, _ in sorted(all_liquidity.items(), key=lambda kv: kv[1], reverse=True)]
+            top_more = [
+                s
+                for s, _ in sorted(
+                    all_liquidity.items(), key=lambda kv: kv[1], reverse=True
+                )
+            ]
             for sym in top_more:
                 if len(valid_symbols) >= 20:
                     break
                 if sym not in valid_symbols:
                     valid_symbols.append(sym)
-                    valid_symbols_info[sym] = valid_symbols_info.get(sym, {"avg_fin": float(all_liquidity.get(sym, 0.0) or 0.0)})
+                    valid_symbols_info[sym] = valid_symbols_info.get(
+                        sym, {"avg_fin": float(all_liquidity.get(sym, 0.0) or 0.0)}
+                    )
     print(f"[OK] {len(valid_symbols)} ativos aprovados para otimização.")
+    try:
+        if mt5 is not None:
+            filtered = []
+            for symbol in valid_symbols:
+                if not mt5.symbol_select(symbol, True):
+                    print(f"⚠️ Tentando adicionar {symbol} ao Market Watch...")
+                    if not mt5.symbol_select(symbol, True):
+                        print(f"❌ Falha: {symbol} não encontrado na corretora.")
+                        continue
+                filtered.append(symbol)
+            valid_symbols = filtered
+    except Exception:
+        pass
     # 3. OTIMIZAÇÃO PARALELA (WFO + OPTUNA)
     # 3. OTIMIZAÇÃO PARALELA (WFO + OPTUNA)
     # Configuração
     bt_config = {
-        "BARS": 2000 if SANDBOX_MODE else 5000,
+        "BARS": 3000 if SANDBOX_MODE else 6000,
         "MAX_EVALS": 30 if SANDBOX_MODE else 60,
         "WFO_WINDOWS": 5 if SANDBOX_MODE else 10,
-        "TRAIN_PERIOD": 600 if SANDBOX_MODE else 1000,
-        "TEST_PERIOD": 200 if SANDBOX_MODE else 250
+        "TRAIN_PERIOD": 900 if SANDBOX_MODE else 1500,
+        "TEST_PERIOD": 300 if SANDBOX_MODE else 400,
     }
-   
+
     tasks = [(sym, bt_config) for sym in valid_symbols]
     all_results = {}
-   
-    print(f"\n[INFO] Iniciando Workers (ProcessPool) em {os.cpu_count()} cores...", flush=True)
+
+    print(
+        f"\n[INFO] Iniciando Workers (ProcessPool) em {os.cpu_count()} cores...",
+        flush=True,
+    )
     with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
         futures = {executor.submit(process_symbol_wrapper, t): t[0] for t in tasks}
         pbar_workers = tqdm(total=len(tasks), desc="Otimizando", unit="sym")
@@ -2095,15 +2797,25 @@ def run_optimizer():
             if res.get("status") == "ok":
                 all_results[sym] = res
             else:
-                logger.warning(f"[ERROR] {sym}: Falha na otimização - {res.get('error')}")
+                logger.warning(
+                    f"[ERROR] {sym}: Falha na otimização - {res.get('error')}"
+                )
             pbar_workers.update(1)
         pbar_workers.close()
     for sym, res in all_results.items():
         try:
             os.makedirs(os.path.join(OPT_OUTPUT_DIR, "partials"), exist_ok=True)
-            with open(os.path.join(OPT_OUTPUT_DIR, "partials", f"{sym}.json"), "w", encoding="utf-8") as f:
+            with open(
+                os.path.join(OPT_OUTPUT_DIR, "partials", f"{sym}.json"),
+                "w",
+                encoding="utf-8",
+            ) as f:
                 json.dump(res, f, ensure_ascii=False, indent=2)
-            with open(os.path.join(OPT_OUTPUT_DIR, "partial_results.json"), "w", encoding="utf-8") as f:
+            with open(
+                os.path.join(OPT_OUTPUT_DIR, "partial_results.json"),
+                "w",
+                encoding="utf-8",
+            ) as f:
                 json.dump(all_results, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
@@ -2112,16 +2824,18 @@ def run_optimizer():
         if res.get("status") == "ok":
             m = res.get("test_metrics", {})
             liq_metrics = valid_symbols_info.get(sym, {})
-            
-            optimized_list.append({
-                "symbol": sym,
-                "res": res,
-                "avg_fin": liq_metrics.get("avg_fin", 0),
-                "calmar": m.get("calmar", 0),
-                "max_dd": m.get("max_drawdown", 1.0),
-                "trades": m.get("total_trades", 0),
-                "params": res.get("selected_params", {})
-            })
+
+            optimized_list.append(
+                {
+                    "symbol": sym,
+                    "res": res,
+                    "avg_fin": liq_metrics.get("avg_fin", 0),
+                    "calmar": m.get("calmar", 0),
+                    "max_dd": m.get("max_drawdown", 1.0),
+                    "trades": m.get("total_trades", 0),
+                    "params": res.get("selected_params", {}),
+                }
+            )
     opt_map = {item["symbol"]: item for item in optimized_list}
     blue_required = set(elite_blue)
     blue_list = []
@@ -2132,61 +2846,87 @@ def run_optimizer():
             try:
                 dfv = load_data_polygon(bs, 3000, "M15")
                 params = _ensure_non_generic(bs, {})
-                m = backtest_params_on_df(bs, params, dfv) if dfv is not None else {"calmar":0,"max_drawdown":1.0,"profit_factor":0.0,"total_trades":0,"equity_curve":[100000.0]}
-                blue_list.append({
-                    "symbol": bs,
-                    "res": {"selected_params": params, "test_metrics": m, "equity_curve": m.get("equity_curve", [])},
-                    "avg_fin": valid_symbols_info.get(bs, {}).get("avg_fin", 0),
-                    "calmar": m.get("calmar", 0),
-                    "max_dd": m.get("max_drawdown", 1.0),
-                    "trades": m.get("total_trades", 0),
-                    "params": params
-                })
+                m = (
+                    backtest_params_on_df(bs, params, dfv)
+                    if dfv is not None
+                    else {
+                        "calmar": 0,
+                        "max_drawdown": 1.0,
+                        "profit_factor": 0.0,
+                        "total_trades": 0,
+                        "equity_curve": [100000.0],
+                    }
+                )
+                blue_list.append(
+                    {
+                        "symbol": bs,
+                        "res": {
+                            "selected_params": params,
+                            "test_metrics": m,
+                            "equity_curve": m.get("equity_curve", []),
+                        },
+                        "avg_fin": valid_symbols_info.get(bs, {}).get("avg_fin", 0),
+                        "calmar": m.get("calmar", 0),
+                        "max_dd": m.get("max_drawdown", 1.0),
+                        "trades": m.get("total_trades", 0),
+                        "params": params,
+                    }
+                )
             except Exception:
                 pass
     opp_candidates = [it for it in optimized_list if it["symbol"] not in blue_required]
     opp_sorted = sorted(
         opp_candidates,
         key=lambda x: (
-            float(x.get("res", {}).get("test_metrics", {}).get("profit_factor", 0.0)) * 0.6
+            float(x.get("res", {}).get("test_metrics", {}).get("profit_factor", 0.0))
+            * 0.6
             + float(x.get("res", {}).get("test_metrics", {}).get("win_rate", 0.0)) * 0.4
         ),
-        reverse=True
+        reverse=True,
     )
-    opp_list = opp_sorted[:max(0, 10)]
-    print(f"[DEBUG] Blue obrigatórios aprovados: {len(blue_list)} | Oportunidades candidatas: {len(opp_candidates)} | Selecionadas: {len(opp_list)}", flush=True)
+    opp_list = opp_sorted[: max(0, 10)]
+    print(
+        f"[DEBUG] Blue obrigatórios aprovados: {len(blue_list)} | Oportunidades candidatas: {len(opp_candidates)} | Selecionadas: {len(opp_list)}",
+        flush=True,
+    )
     final_selection_all = blue_list + opp_list
     final_selection_all = final_selection_all[:20]
     blue_chips_syms = set(elite_blue)
-    
+
     final_elite = {}
     monte_carlo_approved = []
-    
+
     for item in final_selection_all:
         sym = item["symbol"]
         res = item["res"]
-        
+
         curve = res.get("equity_curve", [])
         mc_res = run_monte_carlo_stress(curve, n_simulations=1000)
         res["monte_carlo"] = mc_res
-        
+
         final_elite[sym] = res
-        
+
         # Prepara para Markowitz
         roi_est = res["test_metrics"].get("total_return", 0)
-        monte_carlo_approved.append({
-            "symbol": sym,
-            "roi_esperado": max(0.01, roi_est),
-            "params": _ensure_non_generic(sym, res["selected_params"]),
-            "equity_curve": res.get("equity_curve", []),
-            "avg_fin": float(valid_symbols_info.get(sym, {}).get("avg_fin", 0.0) or 0.0),
-            "category": ("BLUE CHIP" if sym in blue_chips_syms else "OPORTUNIDADE")
-        })
+        monte_carlo_approved.append(
+            {
+                "symbol": sym,
+                "roi_esperado": max(0.01, roi_est),
+                "params": _ensure_non_generic(sym, res["selected_params"]),
+                "equity_curve": res.get("equity_curve", []),
+                "avg_fin": float(
+                    valid_symbols_info.get(sym, {}).get("avg_fin", 0.0) or 0.0
+                ),
+                "category": ("BLUE CHIP" if sym in blue_chips_syms else "OPORTUNIDADE"),
+            }
+        )
 
     print(f" 🎯 Portfólio Inicial (Pré-Filtro): {len(final_elite)} ativos.")
     if len(final_elite) > 2:
         final_elite = filter_correlated_assets(final_elite, threshold=0.75)
-        monte_carlo_approved = [item for item in monte_carlo_approved if item["symbol"] in final_elite]
+        monte_carlo_approved = [
+            item for item in monte_carlo_approved if item["symbol"] in final_elite
+        ]
 
     # 5. ALOCAÇÃO DE PORTFÓLIO (MARKOWITZ)
     portfolio_weights = optimize_portfolio_allocation(monte_carlo_approved)
@@ -2197,15 +2937,18 @@ def run_optimizer():
     final_elite = apply_safety_guardrails(final_elite)
     for sym in final_elite.keys():
         portfolio_weights[sym] = float(final_elite[sym].get("weight", 0.0) or 0.0)
-   
+
     # Comentário: I. Testes de Sanidade (Forward, Stress, Buy&Hold)
     try:
         from optimizer_optuna import backtest_params_on_df
+
         print("\n[SANITY] Iniciando testes de sanidade...")
-        sample_syms = list(final_elite.keys())[:min(5, len(final_elite))]
+        sample_syms = list(final_elite.keys())[: min(5, len(final_elite))]
         sanity_results = []
         for sym in sample_syms:
-            df_recent = load_data_with_retry(sym, config_bt["TEST_PERIOD"], timeframe="M15")
+            df_recent = load_data_with_retry(
+                sym, config_bt["TEST_PERIOD"], timeframe="M15"
+            )
             if df_recent is None or len(df_recent) < 100:
                 print(f" [WARN] {sym}: dados insuficientes para sanity")
                 continue
@@ -2214,43 +2957,63 @@ def run_optimizer():
             res_fwd = backtest_params_on_df(sym, params, df_recent, ml_model=None)
             # Stress test (slippage dobrado)
             params_stress = dict(params)
-            params_stress["base_slippage"] = float(params.get("base_slippage", 0.0015) * 2.0)
-            res_stress = backtest_params_on_df(sym, params_stress, df_recent, ml_model=None)
+            params_stress["base_slippage"] = float(
+                params.get("base_slippage", 0.0015) * 2.0
+            )
+            res_stress = backtest_params_on_df(
+                sym, params_stress, df_recent, ml_model=None
+            )
             # Buy & Hold comparação
             close = df_recent["close"].astype(float)
             bh_ret = float(close.iloc[-1] / close.iloc[0] - 1.0)
-            sanity_results.append({
-                "symbol": sym,
-                "wr_fwd": float(res_fwd.get("win_rate", 0.0) or 0.0),
-                "calmar_fwd": float(res_fwd.get("calmar", 0.0) or 0.0),
-                "dd_fwd": float(res_fwd.get("max_drawdown", 0.0) or 0.0),
-                "ret_fwd": float(res_fwd.get("total_return", 0.0) or 0.0),
-                "ret_bh": bh_ret,
-                "calmar_stress": float(res_stress.get("calmar", 0.0) or 0.0),
-            })
+            sanity_results.append(
+                {
+                    "symbol": sym,
+                    "wr_fwd": float(res_fwd.get("win_rate", 0.0) or 0.0),
+                    "calmar_fwd": float(res_fwd.get("calmar", 0.0) or 0.0),
+                    "dd_fwd": float(res_fwd.get("max_drawdown", 0.0) or 0.0),
+                    "ret_fwd": float(res_fwd.get("total_return", 0.0) or 0.0),
+                    "ret_bh": bh_ret,
+                    "calmar_stress": float(res_stress.get("calmar", 0.0) or 0.0),
+                }
+            )
         # Sumário
-        ok_forward = all(r["wr_fwd"] >= 0.30 and r["calmar_fwd"] > 0.0 for r in sanity_results) if sanity_results else False
-        ok_stress = all(r["calmar_stress"] > -0.2 for r in sanity_results) if sanity_results else False
-        ok_bh = all(r["ret_fwd"] >= (r["ret_bh"] * 0.5) for r in sanity_results) if sanity_results else False
-        print(f" [SANITY] Forward OK? {ok_forward} | Stress OK? {ok_stress} | Buy&Hold OK? {ok_bh}")
+        ok_forward = (
+            all(r["wr_fwd"] >= 0.30 and r["calmar_fwd"] > 0.0 for r in sanity_results)
+            if sanity_results
+            else False
+        )
+        ok_stress = (
+            all(r["calmar_stress"] > -0.2 for r in sanity_results)
+            if sanity_results
+            else False
+        )
+        ok_bh = (
+            all(r["ret_fwd"] >= (r["ret_bh"] * 0.5) for r in sanity_results)
+            if sanity_results
+            else False
+        )
+        print(
+            f" [SANITY] Forward OK? {ok_forward} | Stress OK? {ok_stress} | Buy&Hold OK? {ok_bh}"
+        )
     except Exception as e:
         print(f" [SANITY] Falha ao executar testes: {e}")
-    
+
     # 6. GERAÇÃO DE RELATÓRIOS
     # a) ELITE_SYMBOLS (Python Dict)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     elite_file = os.path.join(OPT_OUTPUT_DIR, f"elite_portfolio_{timestamp}.txt")
-   
+
     with open(elite_file, "w", encoding="utf-8") as f:
         f.write("# XP3 V5 - ELITE PORTFOLIO\n")
         f.write(f"# Gerado em: {datetime.now()}\n")
         f.write("ELITE_SYMBOLS = {\n")
-       
+
         for sym, res in final_elite.items():
             p = _ensure_non_generic(sym, res["selected_params"])
             weight = portfolio_weights.get(sym, 0.0)
             category = "BLUE CHIP" if sym in blue_chips_syms else "OPORTUNIDADE"
-           
+
             f.write(f' "{sym}": {{\n')
             f.write(f'  "category": "{category}",\n')
             f.write(f'  "weight": {weight:.2f}, # {weight*100:.1f}%\n')
@@ -2261,14 +3024,23 @@ def run_optimizer():
             f.write(f'  "adx_threshold": {p.get("adx_threshold", 15)},\n')
             f.write(f'  "mom_min": {p.get("mom_min", 0.0)},\n')
             f.write(f'  "sl_atr_multiplier": {p.get("sl_atr_multiplier", 2.0)},\n')
-            f.write(f'  "tp_mult": {p.get("tp_mult", 3.0)}\n')
-            f.write(f' }},\n')
-           
+            tr = 0.0
+            try:
+                sm = float(p.get("sl_atr_multiplier", 2.0) or 2.0)
+                tm = float(p.get("tp_mult", 3.0) or 3.0)
+                tr = tm / sm if sm > 0 else 0.0
+            except Exception:
+                tr = 0.0
+            f.write(f'  "tp_mult": {p.get("tp_mult", 3.0)},\n')
+            f.write(f'  "tp_ratio": {tr:.2f}\n')
+            f.write(f" }},\n")
+
         f.write("}\n")
-       
+
     print(f"\n💾 Portfolio salvo em: {elite_file}")
 
     import json
+
     elite_payload = {
         "generated_at": datetime.now().isoformat(),
         "elite_symbols": {},
@@ -2289,6 +3061,14 @@ def run_optimizer():
             "mom_min": float(p.get("mom_min", 0.0) or 0.0),
             "sl_atr_multiplier": float(p.get("sl_atr_multiplier", 2.0) or 2.0),
             "tp_mult": float(p.get("tp_mult", 3.0) or 3.0),
+            "tp_ratio": (
+                float(
+                    (p.get("tp_mult", 3.0) or 3.0)
+                    / (p.get("sl_atr_multiplier", 2.0) or 2.0)
+                )
+                if float(p.get("sl_atr_multiplier", 2.0) or 2.0) > 0
+                else 0.0
+            ),
         }
 
     elite_json_file = os.path.join(OPT_OUTPUT_DIR, f"elite_symbols_{timestamp}.json")
@@ -2297,28 +3077,35 @@ def run_optimizer():
         json.dump(elite_payload, f, ensure_ascii=False, indent=2)
     with open(elite_json_latest, "w", encoding="utf-8") as f:
         json.dump(elite_payload, f, ensure_ascii=False, indent=2)
-   
+
     # b) CSV Resumo
     summary_data = []
     for sym, res in final_elite.items():
         m = res["test_metrics"]
         mc = res["monte_carlo"]
-        summary_data.append({
-            "Symbol": sym,
-            "Weight": portfolio_weights.get(sym, 0.0),
-            "Calmar_OOS": m.get("calmar"),
-            "DD_OOS": m.get("max_drawdown"),
-            "WR_MC": mc.get("win_rate"),
-            "DD95_MC": mc.get("max_dd_95"),
-            "Trades": m.get("total_trades")
-        })
-   
+        summary_data.append(
+            {
+                "Symbol": sym,
+                "Weight": portfolio_weights.get(sym, 0.0),
+                "Calmar_OOS": m.get("calmar"),
+                "DD_OOS": m.get("max_drawdown"),
+                "WR_MC": mc.get("win_rate"),
+                "DD95_MC": mc.get("max_dd_95"),
+                "Trades": m.get("total_trades"),
+            }
+        )
+
     if summary_data:
         pd.DataFrame(summary_data).sort_values("Weight", ascending=False).to_csv(
-            os.path.join(OPT_OUTPUT_DIR, f"portfolio_summary_{timestamp}.csv"), index=False
+            os.path.join(OPT_OUTPUT_DIR, f"portfolio_summary_{timestamp}.csv"),
+            index=False,
         )
     try:
-        top10 = sorted([(s, portfolio_weights.get(s, 0.0)) for s in portfolio_weights], key=lambda x: x[1], reverse=True)[:10]
+        top10 = sorted(
+            [(s, portfolio_weights.get(s, 0.0)) for s in portfolio_weights],
+            key=lambda x: x[1],
+            reverse=True,
+        )[:10]
         sectors = {}
         for s, w in portfolio_weights.items():
             sec = SECTOR_MAP.get(s, "UNKNOWN")
@@ -2342,7 +3129,11 @@ def run_optimizer():
             eqs.append((curve, portfolio_weights.get(s, 0.0)))
         agg = None
         if eqs:
-            min_len = min(len(c) for c, _ in eqs if len(c) > 0) if any(len(c) > 0 for c, _ in eqs) else 0
+            min_len = (
+                min(len(c) for c, _ in eqs if len(c) > 0)
+                if any(len(c) > 0 for c, _ in eqs)
+                else 0
+            )
             if min_len > 0:
                 agg_curve = np.zeros(min_len, dtype=np.float64)
                 for c, w in eqs:
@@ -2362,7 +3153,11 @@ def run_optimizer():
         report_md.append(f"- Selic: {selic_rate:.2%}")
         if last_macro:
             report_md.append(f"- Última consulta: {last_macro.get('updated_at','N/D')}")
-        with open(os.path.join(OPT_OUTPUT_DIR, f"final_report_{timestamp}.md"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(OPT_OUTPUT_DIR, f"final_report_{timestamp}.md"),
+            "w",
+            encoding="utf-8",
+        ) as f:
             f.write("\n".join(report_md))
     except Exception:
         pass
@@ -2377,7 +3172,9 @@ def run_optimizer():
             m = backtest_params_on_df(sym, p, dfv)
             selic = get_macro_rate("SELIC")
             ipca = get_macro_rate("IPCA")
-            logger.info(f"🔎 VALIDAÇÃO {sym}: Ret={m.get('total_return',0):.2%} | PF={m.get('profit_factor',0):.2f} | DD={m.get('max_drawdown',0):.2%} | Selic={selic:.2%} | IPCA={ipca:.2%}")
+            logger.info(
+                f"🔎 VALIDAÇÃO {sym}: Ret={m.get('total_return',0):.2%} | PF={m.get('profit_factor',0):.2f} | DD={m.get('max_drawdown',0):.2%} | Selic={selic:.2%} | IPCA={ipca:.2%}"
+            )
     except Exception as e:
         logger.warning(f"Validação final falhou: {e}")
     # c) Relatório consolidado de todos os ativos (inclusive sem resultados)
@@ -2387,7 +3184,9 @@ def run_optimizer():
         rep_txt = os.path.join(OPT_OUTPUT_DIR, f"weekly_all_assets_{ts}.txt")
         with open(rep_md, "w", encoding="utf-8") as fmd:
             fmd.write("# 📊 Relatório Consolidado - Otimizador Semanal\n\n")
-            fmd.write(f"**Gerado em:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n---\n\n")
+            fmd.write(
+                f"**Gerado em:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n---\n\n"
+            )
             universe = set(valid_symbols_info.keys()) | set(all_results.keys())
             for sym in sorted(universe):
                 fmd.write(f"## 🎯 {sym}\n\n")
@@ -2408,7 +3207,9 @@ def run_optimizer():
                     fmd.write(f"- Win Rate: {float(m.get('win_rate',0)):.1%}\n")
                     fmd.write(f"- Total Trades: {int(m.get('total_trades',0))}\n")
                     fmd.write(f"- Max Drawdown: {float(m.get('max_drawdown',0)):.1%}\n")
-                    fmd.write(f"- Profit Factor: {float(m.get('profit_factor',0)):.2f}\n\n")
+                    fmd.write(
+                        f"- Profit Factor: {float(m.get('profit_factor',0)):.2f}\n\n"
+                    )
                 fmd.write("---\n\n")
         with open(rep_txt, "w", encoding="utf-8") as ftx:
             ftx.write("RELATORIO CONSOLIDADO - OTIMIZADOR SEMANAL\n")
@@ -2431,8 +3232,12 @@ def run_optimizer():
                     ftx.write(f"  Win Rate: {float(m.get('win_rate',0)):.1%}\n")
                     ftx.write(f"  Trades: {int(m.get('total_trades',0))}\n")
                     ftx.write(f"  Max Drawdown: {float(m.get('max_drawdown',0)):.1%}\n")
-                    ftx.write(f"  Profit Factor: {float(m.get('profit_factor',0)):.2f}\n")
-                ftx.write("------------------------------------------------------------\n")
+                    ftx.write(
+                        f"  Profit Factor: {float(m.get('profit_factor',0)):.2f}\n"
+                    )
+                ftx.write(
+                    "------------------------------------------------------------\n"
+                )
         logger.info(f"💾 Relatórios consolidados salvos: {rep_md} | {rep_txt}")
     except Exception as e:
         logger.warning(f"Falha ao gerar relatório consolidado: {e}")
@@ -2448,30 +3253,60 @@ def run_optimizer():
             for sym in sorted(universe):
                 fd.write(f"SIMBOLO: {sym}\n")
                 res = all_results.get(sym)
-                if not res or int(res.get("test_metrics", {}).get("total_trades", 0)) <= 3:
+                if (
+                    not res
+                    or int(res.get("test_metrics", {}).get("total_trades", 0)) <= 3
+                ):
                     try:
                         dfv = load_data_polygon(sym, 10000, "M15")
-                        params = _ensure_non_generic(sym, res.get("selected_params", {}) if res else {})
-                        m = backtest_params_on_df(sym, params, dfv) if dfv is not None else {"total_trades":0,"win_rate":0.0,"max_drawdown":1.0,"profit_factor":0.0}
-                        fd.write(f"  FORCA_EXEC: Trades={int(m.get('total_trades',0))} WR={float(m.get('win_rate',0)):.2f} PF={float(m.get('profit_factor',0)):.2f} DD={float(m.get('max_drawdown',0)):.2f}\n")
-                        all_results[sym] = {"selected_params": params, "test_metrics": m, "status": "ok", "equity_curve": m.get("equity_curve", [])}
+                        params = _ensure_non_generic(
+                            sym, res.get("selected_params", {}) if res else {}
+                        )
+                        m = (
+                            backtest_params_on_df(sym, params, dfv)
+                            if dfv is not None
+                            else {
+                                "total_trades": 0,
+                                "win_rate": 0.0,
+                                "max_drawdown": 1.0,
+                                "profit_factor": 0.0,
+                            }
+                        )
+                        fd.write(
+                            f"  FORCA_EXEC: Trades={int(m.get('total_trades',0))} WR={float(m.get('win_rate',0)):.2f} PF={float(m.get('profit_factor',0)):.2f} DD={float(m.get('max_drawdown',0)):.2f}\n"
+                        )
+                        all_results[sym] = {
+                            "selected_params": params,
+                            "test_metrics": m,
+                            "status": "ok",
+                            "equity_curve": m.get("equity_curve", []),
+                        }
                     except Exception as ex:
                         fd.write(f"  FALHA_FORCA_EXEC: {ex}\n")
                 else:
                     m = res.get("test_metrics", {})
-                    fd.write(f"  OK: Trades={int(m.get('total_trades',0))} WR={float(m.get('win_rate',0)):.2f}\n")
-                fd.write("------------------------------------------------------------\n")
+                    fd.write(
+                        f"  OK: Trades={int(m.get('total_trades',0))} WR={float(m.get('win_rate',0)):.2f}\n"
+                    )
+                fd.write(
+                    "------------------------------------------------------------\n"
+                )
         logger.info(f"🧪 Diagnósticos semanais salvos: {diag_txt}")
     except Exception:
         pass
+
+
 if __name__ == "__main__":
     import multiprocessing
+
     multiprocessing.freeze_support()
 
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["run", "schedule"], default=os.getenv("OPT_MODE", "run"))
+    parser.add_argument(
+        "--mode", choices=["run", "schedule"], default=os.getenv("OPT_MODE", "run")
+    )
     parser.add_argument("--use-real-db", action="store_true")
     args = parser.parse_args()
 
@@ -2482,4 +3317,3 @@ if __name__ == "__main__":
         scheduler()
     else:
         run_optimizer()
-

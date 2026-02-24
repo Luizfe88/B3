@@ -1,4 +1,4 @@
-#fundamentals.py
+# fundamentals.py
 import logging
 import json
 import os
@@ -11,16 +11,15 @@ import config
 logger = logging.getLogger("fundamentals")
 
 # Limites configuráveis para filtro de tradeabilidade (MT5-only)
-FUNDAMENTAL_LIMITS = {
-    "min_avg_tick_volume": 1.0,
-    "min_atr_pct": 0.005
-}
+FUNDAMENTAL_LIMITS = {"min_avg_tick_volume": 1.0, "min_atr_pct": 0.005}
+
 
 class FundamentalFetcher:
     """
     Coleta métricas essenciais via MT5 (sem dependência do Yahoo).
     Usa cache leve para evitar leituras repetidas quando possível.
     """
+
     def __init__(self, cache_file="fundamentals_cache.json"):
         self.cache_file = cache_file
         self.cache = self._load_cache()
@@ -29,7 +28,7 @@ class FundamentalFetcher:
     def _load_cache(self):
         if os.path.exists(self.cache_file):
             try:
-                with open(self.cache_file, 'r') as f:
+                with open(self.cache_file, "r") as f:
                     return json.load(f)
             except Exception as e:
                 logger.error(f"Erro ao carregar cache fundamentista: {e}")
@@ -37,7 +36,7 @@ class FundamentalFetcher:
 
     def _save_cache(self):
         try:
-            with open(self.cache_file, 'w') as f:
+            with open(self.cache_file, "w") as f:
                 json.dump(self.cache, f)
         except Exception as e:
             logger.error(f"Erro ao salvar cache fundamentista: {e}")
@@ -47,18 +46,23 @@ class FundamentalFetcher:
         cache_key = symbol
         if cache_key in self.cache:
             entry = self.cache[cache_key]
-            updated_str = entry.get('updated_at')
+            updated_str = entry.get("updated_at")
             if updated_str:
                 try:
                     updated_at = datetime.strptime(updated_str, "%Y-%m-%d %H:%M:%S")
-                    if (now - updated_at) <= timedelta(minutes=self.cache_validity_minutes):
-                        return entry.get('data', {})
+                    if (now - updated_at) <= timedelta(
+                        minutes=self.cache_validity_minutes
+                    ):
+                        return entry.get("data", {})
                 except Exception:
                     pass
             else:
-                data = entry.get('data')
+                data = entry.get("data")
                 if isinstance(data, dict) and data:
-                    self.cache[cache_key] = {"updated_at": now.strftime("%Y-%m-%d %H:%M:%S"), "data": data}
+                    self.cache[cache_key] = {
+                        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+                        "data": data,
+                    }
                     self._save_cache()
                     return data
 
@@ -82,16 +86,24 @@ class FundamentalFetcher:
                 data = {"mt5_bars": 0, "mt5_avg_tick_volume": 0.0, "mt5_atr_pct": 0.0}
             else:
                 df = pd.DataFrame(rates)
-                df['time'] = pd.to_datetime(df['time'], unit='s')
-                df.set_index('time', inplace=True)
-                avg_vol = float(df['tick_volume'].mean()) if 'tick_volume' in df.columns else float(df['volume'].mean()) if 'volume' in df.columns else 0.0
-                hl_range = (df['high'] - df['low']).mean() if {'high','low'}.issubset(df.columns) else 0.0
-                close_mean = df['close'].mean() if 'close' in df.columns else 0.0
+                df["time"] = pd.to_datetime(df["time"], unit="s")
+                df.set_index("time", inplace=True)
+                avg_vol = (
+                    float(df["tick_volume"].mean())
+                    if "tick_volume" in df.columns
+                    else float(df["volume"].mean()) if "volume" in df.columns else 0.0
+                )
+                hl_range = (
+                    (df["high"] - df["low"]).mean()
+                    if {"high", "low"}.issubset(df.columns)
+                    else 0.0
+                )
+                close_mean = df["close"].mean() if "close" in df.columns else 0.0
                 atr_pct = float(hl_range / close_mean) if close_mean else 0.0
                 data = {
                     "mt5_bars": int(len(df)),
                     "mt5_avg_tick_volume": avg_vol,
-                    "mt5_atr_pct": atr_pct
+                    "mt5_atr_pct": atr_pct,
                 }
             try:
                 mt5.shutdown()
@@ -100,7 +112,7 @@ class FundamentalFetcher:
 
             self.cache[cache_key] = {
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
-                "data": data
+                "data": data,
             }
             self._save_cache()
             return data
@@ -161,14 +173,15 @@ fundamental_fetcher = FundamentalFetcher()
 if __name__ == "__main__":
     # Teste rápido
     logging.basicConfig(level=logging.INFO)
-    
+
     for sym in ["PETR4", "VALE3", "ITUB4", "MGLU3"]:
         data = fundamental_fetcher.get_fundamentals(sym)
         tradeable, reason = fundamental_fetcher.check_tradeability(sym)
         score = fundamental_fetcher.get_fundamental_score(sym)
-        
+
         print(f"\n{sym}:")
-        print(f"  MT5 barras: {data.get('mt5_bars', 0)} | vol médio: {data.get('mt5_avg_tick_volume', 0.0):.0f} | ATR%: {data.get('mt5_atr_pct', 0.0):.3f}")
+        print(
+            f"  MT5 barras: {data.get('mt5_bars', 0)} | vol médio: {data.get('mt5_avg_tick_volume', 0.0):.0f} | ATR%: {data.get('mt5_atr_pct', 0.0):.3f}"
+        )
         print(f"  Tradeable: {tradeable} ({reason})")
         print(f"  Score: {score:.0f}/100")
-

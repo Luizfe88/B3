@@ -18,8 +18,33 @@ logger = logging.getLogger("news_filter")
 
 # Palavras-chave para sentimento (Brasil/B3) caso HF falhe
 SENTIMENT_KEYWORDS = {
-    "POSITIVO": ["lucro", "alta", "crescimento", "dividendo", "supera", "positivo", "recorde", "compra", "elevação", "acima", "otimismo"],
-    "NEGATIVO": ["prejuízo", "queda", "baixa", "rebaixamento", "abaixo", "negativo", "crise", "risco", "venda", "corte", "pessimismo", "medo"]
+    "POSITIVO": [
+        "lucro",
+        "alta",
+        "crescimento",
+        "dividendo",
+        "supera",
+        "positivo",
+        "recorde",
+        "compra",
+        "elevação",
+        "acima",
+        "otimismo",
+    ],
+    "NEGATIVO": [
+        "prejuízo",
+        "queda",
+        "baixa",
+        "rebaixamento",
+        "abaixo",
+        "negativo",
+        "crise",
+        "risco",
+        "venda",
+        "corte",
+        "pessimismo",
+        "medo",
+    ],
 }
 
 # Cache interno
@@ -31,6 +56,7 @@ _sentiment_cache = {}
 
 _sentiment_pipeline = None
 
+
 def initialize_sentiment_engine():
     """Inicializa o modelo uma única vez no início do programa"""
     global _sentiment_pipeline
@@ -39,23 +65,27 @@ def initialize_sentiment_engine():
 
     try:
         from transformers import pipeline
+
         logger.info("🧠 Carregando motor de NLP (XLM-RoBERTa)...")
         # Pre-load model to avoid initialization lag during trading
         _sentiment_pipeline = pipeline(
             "sentiment-analysis",
             model="cardiffnlp/twitter-xlm-roberta-base-sentiment",
-            device=-1 # Force CPU for thread safety
+            device=-1,  # Force CPU for thread safety
         )
         # Warmup
         _sentiment_pipeline("Teste de aquecimento")
         logger.info("✅ Motor NLP carregado com sucesso!")
     except Exception as e:
-        logger.warning(f"⚠️ Falha ao carregar Transformers: {e}. Usando Fallback de Keywords.")
+        logger.warning(
+            f"⚠️ Falha ao carregar Transformers: {e}. Usando Fallback de Keywords."
+        )
         _sentiment_pipeline = None
+
 
 def get_huggingface_sentiment(text: str) -> Dict[str, float]:
     global _sentiment_pipeline, _sentiment_cache
-    
+
     if not text:
         return {"negative": 0.0, "neutral": 1.0, "positive": 0.0}
 
@@ -71,59 +101,61 @@ def get_huggingface_sentiment(text: str) -> Dict[str, float]:
             results = _sentiment_pipeline(text[:512])[0]
             # Normalize scores if necessary, but pipeline usually returns probability
             # The model returns label ('positive', 'negative', 'neutral') and score
-            # We need to map it correctly. 
+            # We need to map it correctly.
             # Note: The specific model cardiffnlp/twitter-xlm-roberta-base-sentiment returns labels: 'positive', 'negative', 'neutral'
-            
-            # If the pipeline returns a list of dicts (top_k=None by default returns just the top class, we should probably use return_all_scores=True or top_k=None if we want full distribution, 
+
+            # If the pipeline returns a list of dicts (top_k=None by default returns just the top class, we should probably use return_all_scores=True or top_k=None if we want full distribution,
             # but standard pipeline returns just the top label if we don't specify)
             # Actually, let's stick to the user's existing logic structure but make it safe.
             # Assuming standard output: [{'label': 'positive', 'score': 0.9}]
-            
+
             # To get full distribution, we should ideally call pipeline with return_all_scores=True (old) or top_k=None (new)
             # But let's look at the user's code: "scores = {res['label']: res['score'] for res in results}"
             # This implies the user expects a list of results.
             # Let's use robust extraction.
-            
+
             # Re-running with top_k=None to get all scores
             full_results = _sentiment_pipeline(text[:512], top_k=None)
             # full_results is like [[{'label': 'positive', 'score': ...}, ...]]
-            
-            scores = {res['label']: res['score'] for res in full_results}
-            
+
+            scores = {res["label"]: res["score"] for res in full_results}
+
             result = {
-                "negative": scores.get('negative', 0.0),
-                "neutral": scores.get('neutral', 0.0),
-                "positive": scores.get('positive', 0.0)
+                "negative": scores.get("negative", 0.0),
+                "neutral": scores.get("neutral", 0.0),
+                "positive": scores.get("positive", 0.0),
             }
             _sentiment_cache[hash_key] = result
             return result
         except Exception as e:
             logger.error(f"Erro na inferência ML: {e}")
             # Fallthrough to keywords
-    
+
     # 3. Fallback: Keyword Logic
     text_lower = text.lower()
     neg_count = sum(1 for word in SENTIMENT_KEYWORDS["NEGATIVO"] if word in text_lower)
     pos_count = sum(1 for word in SENTIMENT_KEYWORDS["POSITIVO"] if word in text_lower)
     total = neg_count + pos_count
-    
+
     if total == 0:
         result = {"negative": 0.0, "neutral": 1.0, "positive": 0.0}
     else:
         result = {
-            "negative": neg_count / total, 
-            "neutral": 0.0, 
-            "positive": pos_count / total
+            "negative": neg_count / total,
+            "neutral": 0.0,
+            "positive": pos_count / total,
         }
-    
+
     _sentiment_cache[hash_key] = result
     return result
+
+
 def fetch_from_newsapi(query: str, language: str = "pt") -> List[Dict]:
     """Busca notícias via NewsAPI."""
     api_key = getattr(config, "NEWS_API_KEY", "")
     if not api_key:
         return []
-    
+
     try:
         url = "https://newsapi.org/v2/everything"
         params = {
@@ -132,14 +164,18 @@ def fetch_from_newsapi(query: str, language: str = "pt") -> List[Dict]:
             "language": language,
             "sortBy": "publishedAt",
             "pageSize": 5,
-            "from": (datetime.now() - timedelta(days=2)).isoformat()
+            "from": (datetime.now() - timedelta(days=2)).isoformat(),
         }
         resp = requests.get(url, params=params, timeout=5)
         data = resp.json()
-        
+
         if data.get("status") == "ok":
             return [
-                {"title": art["title"], "source": art["source"]["name"], "time": art["publishedAt"]}
+                {
+                    "title": art["title"],
+                    "source": art["source"]["name"],
+                    "time": art["publishedAt"],
+                }
                 for art in data.get("articles", [])
             ]
         return []
@@ -158,50 +194,63 @@ def fetch_from_polygon_news(symbol: str) -> List[Dict]:
             "ticker": ticker,
             "limit": 5,
         }
-        
+
         data = utils.get_polygon_data("v2/reference/news", params)
         if data:
             articles = data.get("results", [])
             logger.info(f"📰 Polygon News: {len(articles)} notícias para {symbol}")
-            return [{"title": a.get("title", ""), "description": a.get("description", "")} for a in articles]
+            return [
+                {"title": a.get("title", ""), "description": a.get("description", "")}
+                for a in articles
+            ]
         return []
     except Exception as e:
         logger.error(f"Erro Polygon News: {e}")
         return []
 
+
 def _fetch_mt5_calendar() -> List[Dict]:
     """Busca calendário econômico MT5 (Brasil)."""
     global _news_cache, _cache_timestamp
     now = datetime.now()
-    
-    if _cache_timestamp and (now - _cache_timestamp).seconds < CACHE_VALIDITY_MINUTES * 60:
+
+    if (
+        _cache_timestamp
+        and (now - _cache_timestamp).seconds < CACHE_VALIDITY_MINUTES * 60
+    ):
         return _news_cache
-    
+
     try:
         from_date = now - timedelta(hours=1)
         to_date = now + timedelta(hours=24)
         calendar_get = getattr(mt5, "calendar_get", None)
-        events_raw = calendar_get(from_date, to_date) if callable(calendar_get) else None
-        
-        if not events_raw: 
+        events_raw = (
+            calendar_get(from_date, to_date) if callable(calendar_get) else None
+        )
+
+        if not events_raw:
             return []
-        
+
         relevant_events = []
         for event in events_raw:
-            if event.country != "BR": continue
-            
+            if event.country != "BR":
+                continue
+
             impact_map = {0: "Low", 1: "Medium", 2: "High"}
             impact = impact_map.get(event.importance, "Low")
-            
-            if impact == "Low": continue
-            
-            relevant_events.append({
-                "time": datetime.fromtimestamp(event.time),
-                "title": event.name.strip(),
-                "impact": impact,
-                "country": event.country
-            })
-        
+
+            if impact == "Low":
+                continue
+
+            relevant_events.append(
+                {
+                    "time": datetime.fromtimestamp(event.time),
+                    "title": event.name.strip(),
+                    "impact": impact,
+                    "country": event.country,
+                }
+            )
+
         relevant_events.sort(key=lambda x: x["time"])
         _news_cache = relevant_events
         _cache_timestamp = now
@@ -209,6 +258,7 @@ def _fetch_mt5_calendar() -> List[Dict]:
     except Exception as e:
         logger.error(f"Erro calendário MT5: {e}")
         return _news_cache
+
 
 def _check_fallback_windows(now: datetime | None = None) -> Tuple[bool, str]:
     if not getattr(config, "ENABLE_NEWS_FALLBACK_WINDOWS", True):
@@ -236,7 +286,9 @@ def _check_fallback_windows(now: datetime | None = None) -> Tuple[bool, str]:
 
     return False, ""
 
+
 _symbol_sentiment_state: Dict[str, Dict[str, object]] = {}
+
 
 def _check_symbol_sentiment_blackout(symbol: str) -> Tuple[bool, str]:
     if not symbol or not getattr(config, "ENABLE_NEWS_SENTIMENT_BLOCK", False):
@@ -249,10 +301,16 @@ def _check_symbol_sentiment_blackout(symbol: str) -> Tuple[bool, str]:
     state = _symbol_sentiment_state.get(symbol, {})
     blocked_until = state.get("blocked_until")
     if isinstance(blocked_until, datetime) and blocked_until > now:
-        return True, f"🚫 Blackout (sentimento): {symbol} até {blocked_until.strftime('%H:%M')}"
+        return (
+            True,
+            f"🚫 Blackout (sentimento): {symbol} até {blocked_until.strftime('%H:%M')}",
+        )
 
     last_check = state.get("last_check")
-    if isinstance(last_check, datetime) and (now - last_check).total_seconds() < 15 * 60:
+    if (
+        isinstance(last_check, datetime)
+        and (now - last_check).total_seconds() < 15 * 60
+    ):
         return False, ""
 
     _symbol_sentiment_state[symbol] = {"last_check": now, "blocked_until": None}
@@ -261,15 +319,20 @@ def _check_symbol_sentiment_blackout(symbol: str) -> Tuple[bool, str]:
     if sentiment <= threshold:
         until = now + timedelta(minutes=block_minutes)
         _symbol_sentiment_state[symbol] = {"last_check": now, "blocked_until": until}
-        return True, f"🚫 Blackout (sentimento {sentiment:.2f}): {symbol} por {block_minutes}min"
+        return (
+            True,
+            f"🚫 Blackout (sentimento {sentiment:.2f}): {symbol} por {block_minutes}min",
+        )
 
     return False, ""
+
 
 def get_upcoming_events(hours_ahead: int = 6) -> List[Dict]:
     events = _fetch_mt5_calendar()
     now = datetime.now()
     cutoff = now + timedelta(hours=hours_ahead)
     return [e for e in events if now <= e["time"] <= cutoff]
+
 
 def check_news_blackout(symbol: str = "") -> Tuple[bool, str]:
     """
@@ -279,11 +342,11 @@ def check_news_blackout(symbol: str = "") -> Tuple[bool, str]:
     """
     if not getattr(config, "ENABLE_NEWS_FILTER", True):
         return False, ""
-    
+
     try:
         upcoming = get_upcoming_events(hours_ahead=3)
         now = datetime.now()
-        
+
         if not upcoming:
             fallback_block, fallback_reason = _check_fallback_windows(now)
             if fallback_block:
@@ -297,36 +360,49 @@ def check_news_blackout(symbol: str = "") -> Tuple[bool, str]:
 
         for event in upcoming:
             time_until = (event["time"] - now).total_seconds() / 60
-            if time_until < 0: continue # Já passou
-            
+            if time_until < 0:
+                continue  # Já passou
+
             # 🕒 Janelas Dinâmicas
             if event["impact"] == "High":
-                block_window = 120 # 2 horas
+                block_window = 120  # 2 horas
             elif event["impact"] == "Medium":
                 block_window = 30  # 30 minutos
             else:
                 continue
-            
+
             if time_until <= block_window:
                 # Verifica sentimento para High Impact
                 if event["impact"] == "High":
                     sentiment = get_huggingface_sentiment(event["title"])
-                    if sentiment["negative"] > 0.6: # Risco alto
-                        return True, f"🚫 Blackout High (Neg:{sentiment['negative']:.1%}): {event['title']} em {int(time_until)}min"
+                    if sentiment["negative"] > 0.6:  # Risco alto
+                        return (
+                            True,
+                            f"🚫 Blackout High (Neg:{sentiment['negative']:.1%}): {event['title']} em {int(time_until)}min",
+                        )
                     else:
-                        logger.info(f"⚠️ Alerta High ({event['title']}), mas sentimento não é crítico.")
+                        logger.info(
+                            f"⚠️ Alerta High ({event['title']}), mas sentimento não é crítico."
+                        )
                         # Ainda bloqueia se for muito perto (<30min) mesmo sem sentimento negativo
                         if time_until < 30:
-                            return True, f"🚫 Blackout High (Iminente): {event['title']} em {int(time_until)}min"
+                            return (
+                                True,
+                                f"🚫 Blackout High (Iminente): {event['title']} em {int(time_until)}min",
+                            )
                 else:
                     # Medium sempre bloqueia na janela curta
-                    return True, f"🚫 Blackout Medium: {event['title']} em {int(time_until)}min"
-                    
+                    return (
+                        True,
+                        f"🚫 Blackout Medium: {event['title']} em {int(time_until)}min",
+                    )
+
         return False, ""
-        
+
     except Exception as e:
         logger.error(f"Erro news blackout: {e}")
         return False, ""
+
 
 def get_next_high_impact_event() -> str:
     events = get_upcoming_events(hours_ahead=24)
@@ -336,6 +412,7 @@ def get_next_high_impact_event() -> str:
         return f"Próximo High: {high[0]['title']} em {mins}min"
     return "Sem eventos High previstos"
 
+
 def get_news_sentiment(symbol: str) -> float:
     """
     ✅ V5.2: Combina NewsAPI e Polygon.io News.
@@ -344,7 +421,7 @@ def get_news_sentiment(symbol: str) -> float:
     try:
         # Busca notícias das duas fontes
         news_items = fetch_from_newsapi(symbol) + fetch_from_polygon_news(symbol)
-        
+
         if not news_items:
             # Fallback para busca genérica se não achar pelo símbolo
             news_items = fetch_from_newsapi(f"{symbol} B3 mercado", language="pt")
@@ -357,7 +434,7 @@ def get_news_sentiment(symbol: str) -> float:
                 # Score = Confiança Positiva - Confiança Negativa
                 score = hf_sentiment["positive"] - hf_sentiment["negative"]
                 sentiments.append(score)
-            
+
             if sentiments:
                 return float(np.mean(sentiments))
 

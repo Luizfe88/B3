@@ -10,10 +10,10 @@ Componentes:
 
 Uso:
     from ml_signals import MLSignalPredictor
-    
+
     predictor = MLSignalPredictor()
     signal = predictor.predict(symbol="PETR4", indicators=ind_dict)
-    
+
     if signal['confidence'] >= 0.70 and signal['direction'] == 'BUY':
         # Entrar na operação
 """
@@ -31,19 +31,25 @@ import json
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 import xgboost as xgb
+from datetime import datetime
+
 
 # Funções auxiliares para serialização do Keras (evita erro de pickle)
 def attention_sum(x):
     import tensorflow.keras.backend as K
+
     return K.sum(x, axis=1)
+
 
 def attention_output_shape(input_shape):
     return (input_shape[0], input_shape[2])
+
 
 # TensorFlow opcional (LSTM)
 try:
     from tensorflow.keras.models import Sequential, load_model
     from tensorflow.keras.layers import LSTM, Dense, Dropout
+
     KERAS_AVAILABLE = True
 except ImportError:
     KERAS_AVAILABLE = False
@@ -52,7 +58,9 @@ except ImportError:
 logger = logging.getLogger("ml_signals")
 
 import threading
+
 _ml_lock = threading.Lock()
+
 
 def check_market_regime(monitored_symbols: Optional[list] = None) -> Dict[str, Any]:
     """
@@ -61,10 +69,12 @@ def check_market_regime(monitored_symbols: Optional[list] = None) -> Dict[str, A
       OU com variação diária negativa, ativa Modo de Segurança.
     """
     import utils
+
     try:
         if monitored_symbols is None:
             try:
                 import config
+
                 monitored_symbols = list(getattr(config, "ELITE_SYMBOLS", {}).keys())
             except Exception:
                 monitored_symbols = []
@@ -79,10 +89,16 @@ def check_market_regime(monitored_symbols: Optional[list] = None) -> Dict[str, A
             df_today = df[df.index.date == today]
             if len(df_today) < 6:
                 df_today = df.tail(16)
-            vol_col = "real_volume" if "real_volume" in df_today.columns else ("tick_volume" if "tick_volume" in df_today.columns else None)
+            vol_col = (
+                "real_volume"
+                if "real_volume" in df_today.columns
+                else ("tick_volume" if "tick_volume" in df_today.columns else None)
+            )
             if vol_col:
                 try:
-                    vwap = (df_today["close"] * df_today[vol_col]).sum() / max(1.0, df_today[vol_col].sum())
+                    vwap = (df_today["close"] * df_today[vol_col]).sum() / max(
+                        1.0, df_today[vol_col].sum()
+                    )
                 except Exception:
                     vwap = df_today["close"].mean()
             else:
@@ -104,13 +120,16 @@ def check_market_regime(monitored_symbols: Optional[list] = None) -> Dict[str, A
         logger.warning(f"Erro ao calcular Market Breath: {e}")
         return {"safety_mode": False, "breath_ratio": 0.0, "evaluated": 0}
 
+
 class MLSignalPredictor:
     """
     Preditor de sinais com Ensemble ML (RF + XGBoost + LSTM)
     Retorna direção (BUY/SELL/HOLD) e confiança (0.0 a 1.0)
     """
 
-    def __init__(self, models_dir: str = "models", confidence_threshold: float = 0.78):  # Aumentado de 0.70 para 0.78
+    def __init__(
+        self, models_dir: str = "models", confidence_threshold: float = 0.78
+    ):  # Aumentado de 0.70 para 0.78
         self.models_dir = Path(models_dir)
         self.models_dir.mkdir(exist_ok=True)
         self.confidence_threshold = confidence_threshold
@@ -119,7 +138,7 @@ class MLSignalPredictor:
         self.xgb_model: Optional[xgb.XGBClassifier] = None
         self.lstm_model: Optional[Any] = None
         self.scaler: Optional[StandardScaler] = None
-        
+
         # ✅ NOVO: Threshold dinâmico
         self.base_threshold = confidence_threshold
         self.current_threshold = confidence_threshold
@@ -128,25 +147,32 @@ class MLSignalPredictor:
 
     def load_or_train_models(self):
         """Carrega modelos treinados ou treina novos com dados sintéticos"""
-        
+
         # ✅ NOVO: Verificar feature mismatch (16 features)
         expected_features = 16
         force_retrain = False
-        
+
         scaler_path = self.models_dir / "scaler.pkl"
         if scaler_path.exists():
             try:
                 temp_scaler = joblib.load(scaler_path)
-                if hasattr(temp_scaler, 'mean_') and temp_scaler.mean_.shape[0] != expected_features:
-                    logger.warning(f"⚠️ Scaler antigo detectado ({temp_scaler.mean_.shape[0]} features != {expected_features}). Forçando retreino.")
+                if (
+                    hasattr(temp_scaler, "mean_")
+                    and temp_scaler.mean_.shape[0] != expected_features
+                ):
+                    logger.warning(
+                        f"⚠️ Scaler antigo detectado ({temp_scaler.mean_.shape[0]} features != {expected_features}). Forçando retreino."
+                    )
                     force_retrain = True
             except:
                 force_retrain = True
-        
+
         if force_retrain:
             # Apaga tudo para garantir consistência
-            for f in self.models_dir.glob("*.pkl"): f.unlink(missing_ok=True)
-            for f in self.models_dir.glob("*.h5"): f.unlink(missing_ok=True)
+            for f in self.models_dir.glob("*.pkl"):
+                f.unlink(missing_ok=True)
+            for f in self.models_dir.glob("*.h5"):
+                f.unlink(missing_ok=True)
             logger.info("♻️ Modelos antigos removidos. Iniciando retreino completo...")
             self.rf_model = None
             self.xgb_model = None
@@ -185,7 +211,9 @@ class MLSignalPredictor:
                     )
                     logger.info("✅ LSTM carregado")
                 except Exception as e:
-                    logger.error(f"Erro ao carregar LSTM, removendo modelo corrompido: {e}")
+                    logger.error(
+                        f"Erro ao carregar LSTM, removendo modelo corrompido: {e}"
+                    )
                     try:
                         lstm_path.unlink(missing_ok=True)
                     except Exception:
@@ -216,16 +244,16 @@ class MLSignalPredictor:
 
         # 500 amostras BUY (16 features)
         X_buy = np.random.rand(500, 16)
-        X_buy[:, 0] = np.random.uniform(20, 45, 500)   # RSI
-        X_buy[:, 1] = np.random.uniform(25, 50, 500)   # ADX
+        X_buy[:, 0] = np.random.uniform(20, 45, 500)  # RSI
+        X_buy[:, 1] = np.random.uniform(25, 50, 500)  # ADX
         X_buy[:, 4] = np.random.uniform(0.001, 0.01, 500)  # Momentum positivo
-        X_buy[:, 11] = np.random.uniform(0.1, 0.5, 500)    # Sentiment positivo
+        X_buy[:, 11] = np.random.uniform(0.1, 0.5, 500)  # Sentiment positivo
 
         # 500 amostras SELL
         X_sell = np.random.rand(500, 16)
         X_sell[:, 0] = np.random.uniform(55, 80, 500)
         X_sell[:, 4] = np.random.uniform(-0.01, -0.001, 500)
-        X_sell[:, 11] = np.random.uniform(-0.5, -0.1, 500)   # Sentiment negativo
+        X_sell[:, 11] = np.random.uniform(-0.5, -0.1, 500)  # Sentiment negativo
 
         # 500 amostras HOLD
         X_hold = np.random.rand(500, 16)
@@ -236,10 +264,7 @@ class MLSignalPredictor:
         y = np.array([0] * 500 + [1] * 500 + [2] * 500)
 
         self.rf_model = RandomForestClassifier(
-            n_estimators=200,
-            max_depth=10,
-            random_state=42,
-            class_weight='balanced'
+            n_estimators=200, max_depth=10, random_state=42, class_weight="balanced"
         )
         self.rf_model.fit(X, y)
         joblib.dump(self.rf_model, self.models_dir / "rf_signal.pkl")
@@ -262,10 +287,13 @@ class MLSignalPredictor:
 
         # ✅ SMOTE: Rebalanceamento sintético
         from imblearn.over_sampling import SMOTE
+
         smote = SMOTE(random_state=42)
         X_resampled, y_resampled = smote.fit_resample(X, y)
-        
-        logger.info(f"⚖️ SMOTE: Dataset rebalanceado de {len(X)} para {len(X_resampled)} amostras")
+
+        logger.info(
+            f"⚖️ SMOTE: Dataset rebalanceado de {len(X)} para {len(X_resampled)} amostras"
+        )
 
         self.xgb_model = xgb.XGBClassifier(
             n_estimators=200,
@@ -274,7 +302,7 @@ class MLSignalPredictor:
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=42,
-            eval_metric='mlogloss'
+            eval_metric="mlogloss",
         )
         self.xgb_model.fit(X_resampled, y_resampled)
         joblib.dump(self.xgb_model, self.models_dir / "xgb_signal.pkl")
@@ -294,36 +322,54 @@ class MLSignalPredictor:
         X = np.random.rand(1000, 50, 16)
         y = np.random.randint(0, 3, 1000)
 
-        from keras.layers import Input, Bidirectional, LSTM, Dense, Dropout, Multiply, Flatten, Activation, RepeatVector, Permute, Lambda
+        from keras.layers import (
+            Input,
+            Bidirectional,
+            LSTM,
+            Dense,
+            Dropout,
+            Multiply,
+            Flatten,
+            Activation,
+            RepeatVector,
+            Permute,
+            Lambda,
+        )
         from keras.models import Model
         import tensorflow.keras.backend as K
 
         # Arquitetura Funcional para Attention
         inputs = Input(shape=(50, 16))
-        
+
         # LSTM layer
         lstm_out = Bidirectional(LSTM(64, return_sequences=True))(inputs)
         lstm_out = Dropout(0.3)(lstm_out)
-        
+
         # Attention Mechanism (Simplificado)
-        attention_weights = Dense(1, activation='tanh')(lstm_out)
+        attention_weights = Dense(1, activation="tanh")(lstm_out)
         attention_weights = Flatten()(attention_weights)
-        attention_weights = Activation('softmax')(attention_weights)
+        attention_weights = Activation("softmax")(attention_weights)
         attention_weights = RepeatVector(128)(attention_weights)
         attention_weights = Permute((2, 1))(attention_weights)
-        
+
         attention_out = Multiply()([lstm_out, attention_weights])
         # Specify output_shape for Lambda layer to avoid inference errors
         # Usando funções nomeadas para permitir serialização (pickle)
-        attention_out = Lambda(attention_sum, output_shape=attention_output_shape)(attention_out)
-        
+        attention_out = Lambda(attention_sum, output_shape=attention_output_shape)(
+            attention_out
+        )
+
         # Output layers
-        x = Dense(32, activation='relu')(attention_out)
+        x = Dense(32, activation="relu")(attention_out)
         x = Dropout(0.2)(x)
-        outputs = Dense(3, activation='softmax')(x)
+        outputs = Dense(3, activation="softmax")(x)
 
         model = Model(inputs=inputs, outputs=outputs)
-        model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        model.compile(
+            optimizer="adam",
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"],
+        )
         model.fit(X, y, epochs=10, batch_size=32, verbose=0)
 
         model.save(self.models_dir / "lstm_signal.h5")
@@ -338,77 +384,94 @@ class MLSignalPredictor:
         from fundamentals import fundamental_fetcher
         from news_filter import get_news_sentiment
         import utils
-        
+
         fund = fundamental_fetcher.get_fundamentals(symbol)
         sentiment = get_news_sentiment(symbol)
-        
+
         # ✅ NOVO: Order Flow e IVIX
         order_flow = utils.get_order_flow(symbol, bars=10)
         vix_br = utils.get_vix_br()
         book_imbalance = utils.get_book_imbalance(symbol)
-        
-        features = np.array([
-            # Técnicos (8)
-            indicators.get('rsi', 50.0),
-            indicators.get('adx', 20.0),
-            indicators.get('atr_pct', 2.0),
-            indicators.get('volume_ratio', 1.0),
-            indicators.get('momentum', 0.0),
-            indicators.get('ema_diff', 0.0),
-            indicators.get('macd', 0.0),
-            indicators.get('price_vs_vwap', 0.0),
-            # Fundamentalistas (3)
-            fund.get('pe_ratio', 0.0),
-            fund.get('roe', 0.0),
-            fund.get('market_cap', 0.0) / 1e9,
-            # Sentimento (1)
-            sentiment,
-            # ✅ NOVOS: Order Flow + Volatilidade (4)
-            order_flow.get('imbalance', 0.0),
-            order_flow.get('cvd', 0.0) / 10000,  # Normalizado
-            vix_br / 50,  # Normalizado (0-1.6 para VIX 0-80)
-            book_imbalance
-        ], dtype=np.float32)
+
+        features = np.array(
+            [
+                # Técnicos (8)
+                indicators.get("rsi", 50.0),
+                indicators.get("adx", 20.0),
+                indicators.get("atr_pct", 2.0),
+                indicators.get("volume_ratio", 1.0),
+                indicators.get("momentum", 0.0),
+                indicators.get("ema_diff", 0.0),
+                indicators.get("macd", 0.0),
+                indicators.get("price_vs_vwap", 0.0),
+                # Fundamentalistas (3)
+                fund.get("pe_ratio", 0.0),
+                fund.get("roe", 0.0),
+                fund.get("market_cap", 0.0) / 1e9,
+                # Sentimento (1)
+                sentiment,
+                # ✅ NOVOS: Order Flow + Volatilidade (4)
+                order_flow.get("imbalance", 0.0),
+                order_flow.get("cvd", 0.0) / 10000,  # Normalizado
+                vix_br / 50,  # Normalizado (0-1.6 para VIX 0-80)
+                book_imbalance,
+            ],
+            dtype=np.float32,
+        )
 
         # Normaliza
         features_scaled = self.scaler.transform(features.reshape(1, -1))
         return features_scaled.flatten()
-    
+
     def get_dynamic_threshold(self, symbol: str) -> float:
         """
         Calcula threshold dinâmico baseado em VIX e streak de perdas.
         Base: 0.65
-        + VIX > 28: +0.08
+        + VIX > 28: +0.12
         + Loss Streak ≥ 2: +0.05
         """
         import utils
+
         base = 0.65
-        
+
         try:
             vix_br = utils.get_vix_br()
             if vix_br > 28:
-                base += 0.08
+                base += 0.12
 
-            loss_streak = utils.get_loss_streak(symbol) if hasattr(utils, 'get_loss_streak') else 0
+            loss_streak = (
+                utils.get_loss_streak(symbol)
+                if hasattr(utils, "get_loss_streak")
+                else 0
+            )
             if loss_streak >= 2:
                 base += 0.05
         except Exception as e:
             logger.error(f"Erro ao calcular dynamic threshold: {e}")
-            
-        self.current_threshold = min(0.82, base)
+
+        self.current_threshold = min(0.88, base)
         return self.current_threshold
 
-    def predict(self, symbol: str, indicators: Dict[str, float], history_df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+    def predict(
+        self,
+        symbol: str,
+        indicators: Dict[str, float],
+        history_df: Optional[pd.DataFrame] = None,
+    ) -> Dict[str, Any]:
         """
         Prediz sinal com ensemble ponderado (v5.2)
         RF: 25% | XGB: 45% | LSTM: 30%
         """
         if not self.rf_model or not self.xgb_model:
             logger.error("Modelos não carregados!")
-            return {"direction": "HOLD", "confidence": 0.0, "reason": "models_not_loaded"}
+            return {
+                "direction": "HOLD",
+                "confidence": 0.0,
+                "reason": "models_not_loaded",
+            }
 
         features = self.extract_features(symbol, indicators)
-        
+
         # 1. Probs dos Modelos
         try:
             rf_probs = self.rf_model.predict_proba(features.reshape(1, -1))[0]
@@ -416,36 +479,12 @@ class MLSignalPredictor:
         except Exception as e:
             logger.error(f"Erro inferência RF/XGB: {e}")
             return {"direction": "HOLD", "confidence": 0.0, "reason": "inference_error"}
-        
+
         lstm_probs = np.array([0.0, 0.0, 1.0])  # Default HOLD
-        
+
         if self.lstm_model and history_df is not None and len(history_df) >= 50:
             try:
-                # Prepare LSTM input
-                # We need sequence of 50 candles with 16 features each
-                # This requires recalculating features for past candles which is expensive
-                # Simplified: Use recent history indicators if available or skip if complex
-                # For robust implementation, we'll skip LSTM if history not properly preppable
-                # OR construct a simplified input if feasible
-                
-                # IMPORTANT: Generating 50 timesteps of 16 features is heavy.
-                # If history_df has columns matching features... but it likely doesn't have sentiment/fund for every candle.
-                # FALLBACK strategy for speed: Use current features repeated (not ideal) or Skip LSTM
-                # Given constraint, we will skip LSTM if complex data prep is missing, 
-                # BUT user wants thread safety for existing logic. 
-                # I will assume there's a way, or just use RF/XGB if data missing.
-                
-                # Logic: If we cannot easily fetch 50 steps of features, we rely on RF/XGB (70% weight)
-                # But to honor the request, we wrap the call.
-                # Assuming history detection logic existed or will be added. 
-                # For now, let's just make it Safe.
-                
-                pass # placeholder for complex data prep
-                
-                # If we HAD the input:
-                # with _ml_lock:
-                #    lstm_probs = self.lstm_model.predict(lstm_input, verbose=0)[0]
-                
+                pass  # placeholder for complex data prep
             except Exception as e:
                 logger.error(f"Erro inferência LSTM: {e}")
 
@@ -457,31 +496,32 @@ class MLSignalPredictor:
 
         all_probs = np.vstack([rf_probs, xgb_probs, lstm_probs])
         final_probs = np.average(all_probs, axis=0, weights=weights)
-        
+
         pred_idx = np.argmax(final_probs)
         confidence = final_probs[pred_idx]
         directions = ["BUY", "SELL", "HOLD"]
         label = directions[pred_idx]
-        
+
         # 3. Microestrutura (Filtros Adicionais)
-        vwap = indicators.get('vwap')
-        close_price = indicators.get('close')
-        
+        vwap = indicators.get("vwap")
+        close_price = indicators.get("close")
+
         if vwap and close_price and label != "HOLD":
             if label == "BUY" and close_price < vwap:
                 label = "HOLD"
             elif label == "SELL" and close_price > vwap:
                 label = "HOLD"
-        
+
         # 4. Confirmação de Fluxo (Order Flow) — Veto obrigatório
         veto_reason = None
         if label != "HOLD":
             import utils
+
             imbalance = utils.get_book_imbalance(symbol)
             if label == "BUY" and imbalance is not None and float(imbalance) < -0.10:
                 label = "HOLD"
                 veto_reason = "OrderFlowVeto: Sellers>55%"
-        
+
         # 5. Filtro de Regime de Mercado (Market Breath)
         regime = check_market_regime()
         threshold = self.base_threshold
@@ -507,7 +547,12 @@ class MLSignalPredictor:
                     confidence = prev.get("confidence", confidence)
                     threshold = prev.get("threshold", threshold)
                     approved = confidence >= threshold if label != "HOLD" else False
-            self._cache[symbol] = {"ts": now_ts, "label": label, "confidence": confidence, "threshold": threshold}
+            self._cache[symbol] = {
+                "ts": now_ts,
+                "label": label,
+                "confidence": confidence,
+                "threshold": threshold,
+            }
         except Exception:
             pass
 
@@ -520,13 +565,147 @@ class MLSignalPredictor:
             "probabilities": {
                 "BUY": float(final_probs[0]),
                 "SELL": float(final_probs[1]),
-                "HOLD": float(final_probs[2])
+                "HOLD": float(final_probs[2]),
             },
             "models_raw": {
                 "rf": int(np.argmax(rf_probs)),
                 "xgb": int(np.argmax(xgb_probs)),
-                "lstm": int(np.argmax(lstm_probs))
+                "lstm": int(np.argmax(lstm_probs)),
             },
             "veto_reason": veto_reason,
-            "is_future": __import__("utils").is_future(symbol)
+            "is_future": __import__("utils").is_future(symbol),
         }
+
+
+class FeatureEngineer:
+    def compute_all(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or len(df) < 20:
+            return pd.DataFrame()
+        close = df["close"]
+        ema_fast = close.ewm(span=9, adjust=False).mean()
+        ema_slow = close.ewm(span=21, adjust=False).mean()
+        delta = close.diff()
+        up = delta.clip(lower=0).rolling(14).mean()
+        down = -delta.clip(upper=0).rolling(14).mean()
+        rsi = 100 - (100 / (1 + up / down))
+        atr = (
+            pd.concat(
+                [
+                    df["high"] - df["low"],
+                    (df["high"] - close.shift()).abs(),
+                    (df["low"] - close.shift()).abs(),
+                ],
+                axis=1,
+            )
+            .max(axis=1)
+            .ewm(alpha=1 / 14, adjust=False)
+            .mean()
+        )
+        atr_pct = (atr / close).fillna(0) * 100
+        vol_ratio = (
+            df.get(
+                "tick_volume", df.get("real_volume", pd.Series(index=df.index, data=0))
+            )
+            .rolling(20)
+            .apply(lambda x: x[-1] / max(x.mean(), 1.0))
+        )
+        ema_diff = (ema_fast - ema_slow) / close.replace(0, np.nan)
+        feats = pd.DataFrame(
+            {
+                "rsi": rsi.fillna(50),
+                "adx": pd.Series(index=df.index, data=20.0),
+                "atr_pct": atr_pct.fillna(0),
+                "volume_ratio": vol_ratio.fillna(1.0),
+                "momentum": close.pct_change(10).fillna(0),
+                "ema_diff": ema_diff.fillna(0),
+                "macd": ema_fast - ema_slow,
+                "price_vs_vwap": (close - close.rolling(20).mean())
+                / close.replace(0, np.nan),
+                "pe_ratio": 0.0,
+                "roe": 0.0,
+                "market_cap": 0.0,
+                "sentiment": 0.0,
+                "order_flow_imbalance": 0.0,
+                "order_flow_cvd": 0.0,
+                "vix_br": 0.0,
+                "book_imbalance": 0.0,
+            }
+        )
+        return feats
+
+
+class OnlineLearner:
+    def __init__(self):
+        self.buffer = []
+
+    def add_sample(self, trade_result: dict):
+        self.buffer.append(trade_result)
+
+
+class MLTradingSystem:
+    def __init__(self):
+        self.predictor = MLSignalPredictor(confidence_threshold=0.55)
+        self.feature_engineer = FeatureEngineer()
+        self.online_learner = OnlineLearner()
+        self.universe = []
+
+    def needs_bootstrap(self) -> bool:
+        return True
+
+    def bootstrap_from_history(self):
+        import utils
+        from datetime import datetime, timedelta
+        import MetaTrader5 as mt5
+
+        simulated = []
+        for symbol in self.universe or []:
+            df = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M15, 500)
+            if df is None or len(df) < 50:
+                continue
+            feats = self.feature_engineer.compute_all(df)
+            if len(feats) == 0:
+                continue
+            for i in range(50, len(feats)):
+                x = feats.iloc[i].to_dict()
+                y = {"confidence": 0.5, "direction": "HOLD"}
+                simulated.append({"features": x, "label": y})
+        if simulated:
+            pass
+
+    def ensure_feature_consistency(self, raw_indicators: dict) -> np.ndarray:
+        features = np.zeros(16, dtype=np.float32)
+        features[0] = float(raw_indicators.get("rsi", 50.0) or 50.0)
+        features[1] = float(raw_indicators.get("adx", 20.0) or 20.0)
+        features[2] = float(raw_indicators.get("atr_pct", 2.0) or 2.0)
+        features[3] = float(raw_indicators.get("volume_ratio", 1.0) or 1.0)
+        features[4] = float(raw_indicators.get("momentum", 0.0) or 0.0)
+        features[5] = float(raw_indicators.get("ema_diff", 0.0) or 0.0)
+        features[6] = float(raw_indicators.get("macd", 0.0) or 0.0)
+        features[7] = float(raw_indicators.get("price_vs_vwap", 0.0) or 0.0)
+        features[8] = float(raw_indicators.get("pe_ratio", 0.0) or 0.0)
+        features[9] = float(raw_indicators.get("roe", 0.0) or 0.0)
+        features[10] = float(raw_indicators.get("market_cap", 0.0) or 0.0)
+        features[11] = float(raw_indicators.get("sentiment", 0.0) or 0.0)
+        features[12] = float(
+            raw_indicators.get(
+                "order_flow_imbalance", raw_indicators.get("imbalance", 0.0)
+            )
+            or 0.0
+        )
+        features[13] = float(
+            raw_indicators.get("order_flow_cvd", raw_indicators.get("cvd", 0.0)) or 0.0
+        )
+        features[14] = float(raw_indicators.get("vix_br", 0.0) or 0.0)
+        features[15] = float(
+            raw_indicators.get(
+                "book_imbalance", raw_indicators.get("book_imbalance", 0.0)
+            )
+            or 0.0
+        )
+        features = np.clip(features, -10, 10)
+        return features
+
+    def train_online(self, trade_result: dict):
+        self.online_learner.add_sample(trade_result)
+        if len(self.online_learner.buffer) >= 20:
+            self.online_learner.buffer.clear()
