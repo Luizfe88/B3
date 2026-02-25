@@ -33,10 +33,11 @@ kelly_fraction:
 # Regra #1 e #5: Filtros essenciais e limites diários
 risk_limits:
   max_daily_loss_money: 2500.00 # Em BRL
-  max_concurrent_positions: 8
+  max_concurrent_positions: 10
   max_losses_per_symbol_default: 2
   max_losses_per_symbol_aggressive: 4
-  max_capital_allocation_pct: 0.20 # 20% do capital por ativo
+  max_capital_allocation_pct: 0.02 # 2% do capital por ativo
+  max_sector_allocation_pct: 0.25 # 25% do capital por setor
   max_total_exposure_pct: 1.50 # 150% do capital total (alavancagem controlada)
   max_new_positions_per_hour: 4 # Throttle de entradas
   market_regime_filter: True # Ativa filtro de regime de mercado

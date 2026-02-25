@@ -4,7 +4,7 @@ import sys
 import logging
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import pandas as pd
 
@@ -44,16 +44,39 @@ def main():
     fund_manager = FundManager()
     
     # 2. Loop Principal
-    logger.info("✅ Sistema online. Iniciando loop de mercado.")
+    logger.info("✅ Sistema online. Preparando Market Watch...")
+    
+    # Inicializa Market Watch para garantir visibilidade
+    # Itera sobre todos os símbolos monitorados e força a seleção
+    # Isso evita erros de "Símbolo não selecionado" durante o loop
+    all_symbols = config.MONITORED_SYMBOLS
+    valid_symbols = []
+    
+    for sym in all_symbols:
+        if mt5.symbol_select(sym, True):
+            valid_symbols.append(sym)
+        else:
+            logger.warning(f"⚠️ Falha inicial ao selecionar {sym} - Removido da lista de execução.")
+            
+    logger.info(f"📋 Market Watch inicializado: {len(valid_symbols)}/{len(all_symbols)} ativos válidos e prontos.")
+
+    logger.info("🚀 Iniciando loop de mercado.")
     
     try:
         while True:
             # Verifica se deve fechar posições no final do dia
-            now = datetime.now().time()
-            close_time_str = config.CLOSE_ALL_BY # "17:45"
+            now = datetime.now()
+            current_time = now.time()
+            
+            # Define horário de fechamento (Sexta vs Outros dias)
+            if now.weekday() == 4: # 4 = Sexta-feira
+                close_time_str = config.FRIDAY_CLOSE_ALL_BY # "17:15"
+            else:
+                close_time_str = config.CLOSE_ALL_BY # "17:45"
+                
             close_time = datetime.strptime(close_time_str, "%H:%M").time()
             
-            if now >= close_time:
+            if current_time >= close_time:
                  # Se ainda tiver posições abertas, fecha tudo
                  open_pos = position_manager.get_open_positions()
                  if open_pos:
@@ -77,9 +100,8 @@ def main():
                 time.sleep(5)
                 continue
 
-            # Obtém lista de ativos (Universe Builder)
-            # Por enquanto, usa lista estática ou do config
-            symbols = config.MONITORED_SYMBOLS
+            # Obtém lista de ativos (Apenas os válidos)
+            symbols = valid_symbols
             
             # Check de quantidade de posições antes do loop
             open_count = len(position_manager.get_open_positions())
@@ -92,8 +114,20 @@ def main():
                 try:
                     # 1. Coleta dados de mercado (Market Data)
                     if not mt5.symbol_select(symbol, True):
-                        logger.warning(f"⚠️ Não foi possível selecionar {symbol} no MT5. Pulando.")
-                        continue
+                        # Tenta novamente após um curto delay (pode ser problema de rede momentâneo)
+                        time.sleep(0.1)
+                        if not mt5.symbol_select(symbol, True):
+                            # Tenta reconectar se falhar duas vezes
+                            logger.warning(f"⚠️ Falha ao selecionar {symbol}. Tentando reconexão com MT5...")
+                            if execution.connect():
+                                if mt5.symbol_select(symbol, True):
+                                    logger.info(f"✅ {symbol} selecionado após reconexão.")
+                                else:
+                                    logger.warning(f"⚠️ Não foi possível selecionar {symbol} no MT5 mesmo após reconexão. Erro: {mt5.last_error()}. Pulando.")
+                                    continue
+                            else:
+                                logger.error("❌ Falha na reconexão com MT5 durante o loop.")
+                                continue
                     
                     # Candles (últimos 100 M15)
                     candles = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M15, 100)
@@ -101,20 +135,37 @@ def main():
                         logger.warning(f"⚠️ Dados insuficientes (candles) para {symbol}. Pulando.")
                         continue
                         
-                    # Ticks (últimos 1000 ticks)
-                    try:
-                        ticks = mt5.copy_ticks_from(symbol, datetime.now() - timedelta(hours=1), 1000, mt5.COPY_TICKS_ALL)
-                    except Exception:
-                        ticks = []
+                    # Preço atual e Ticks
+                    tick_info = mt5.symbol_info_tick(symbol)
+                    current_price = tick_info.last if tick_info else candles['close'].iloc[-1]
 
-                    # Preço atual
-                    tick = mt5.symbol_info_tick(symbol)
-                    current_price = tick.last if tick else candles['close'].iloc[-1]
+                    # Ticks (últimos 1000 ticks) - Usando horário do servidor para evitar problemas de fuso
+                    try:
+                        if tick_info:
+                            server_time = datetime.fromtimestamp(tick_info.time)
+                            # Pega ticks da última hora baseada no servidor
+                            ticks = mt5.copy_ticks_range(symbol, server_time - timedelta(hours=1), server_time, mt5.COPY_TICKS_ALL)
+                        else:
+                            # Fallback se não tiver tick info (mercado fechado/sem dados recentes)
+                            # Tenta pegar ultimos 1000 a partir de agora (menos confiável se fuso errado)
+                            ticks = mt5.copy_ticks_from(symbol, datetime.now() - timedelta(hours=1), 1000, mt5.COPY_TICKS_ALL)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Erro ao obter ticks para {symbol}: {e}")
+                        ticks = []
                     
                     # Dados Globais de Risco
                     account_info = mt5.account_info()
                     equity = account_info.equity if account_info else 1000.0
                     
+                    # Calcula exposições por setor
+                    sector_exposure = {}
+                    open_positions = position_manager.get_open_positions()
+                    for p in open_positions:
+                        p_sym = p['symbol']
+                        p_sector = config.SECTOR_MAP.get(p_sym, "OUTROS")
+                        p_exp = p['volume'] * p['current_price']
+                        sector_exposure[f'sector_exposure_{p_sector}'] = sector_exposure.get(f'sector_exposure_{p_sector}', 0.0) + p_exp
+
                     market_data = {
                         "price": current_price,
                         "ticks": ticks if ticks is not None else [],
@@ -122,7 +173,8 @@ def main():
                         "equity": equity,
                         "total_exposure": position_manager.get_total_exposure(),
                         "recent_entries_count": position_manager.count_recent_entries(minutes=60),
-                        "ibov_trend": utils.get_market_regime()
+                        "ibov_trend": utils.get_market_regime(),
+                        **sector_exposure # Adiciona exposições setoriais ao contexto
                     }
                     
                     # 2. Decisão do Fund Manager (Agentes)
@@ -155,9 +207,24 @@ def main():
                         size_multiplier = decision.get("size", 0.0)
                         
                         target_exposure = equity * base_allocation_pct * size_multiplier
-                        raw_qty = target_exposure / current_price if current_price > 0 else 0
                         
+                        # Correção: Garante lote mínimo de 100 se exposição > 0
+                        # Se o preço for muito alto e equity baixo, pode dar 0. 
+                        # Vamos forçar o cálculo correto de lotes.
+                        if current_price > 0:
+                            raw_qty = target_exposure / current_price
+                        else:
+                            raw_qty = 0
+
                         final_volume = utils.normalize_volume(symbol, raw_qty)
+                        
+                        # Se volume ficou 0 mas a decisão é forte e tem capital, tenta lote mínimo
+                        if final_volume == 0 and size_multiplier > 0 and equity > 1000:
+                            min_lot = 100
+                            cost = min_lot * current_price
+                            if cost <= equity * 0.95: # Margem de segurança
+                                final_volume = float(min_lot)
+                                logger.info(f"⚠️ Volume ajustado para lote mínimo ({final_volume}) em {symbol}")
                         
                         if final_volume <= 0:
                              logger.warning(f"⚠️ Volume calculado para {symbol} inválido ({final_volume}). Ignorando.")
@@ -199,9 +266,21 @@ def main():
                         size_multiplier = decision.get("size", 0.0)
                         
                         target_exposure = equity * base_allocation_pct * size_multiplier
-                        raw_qty = target_exposure / current_price if current_price > 0 else 0
                         
+                        if current_price > 0:
+                            raw_qty = target_exposure / current_price
+                        else:
+                            raw_qty = 0
+                            
                         final_volume = utils.normalize_volume(symbol, raw_qty)
+                        
+                        # Se volume ficou 0 mas a decisão é forte e tem capital, tenta lote mínimo
+                        if final_volume == 0 and size_multiplier > 0 and equity > 1000:
+                            min_lot = 100
+                            cost = min_lot * current_price
+                            if cost <= equity * 0.95:
+                                final_volume = float(min_lot)
+                                logger.info(f"⚠️ Volume VENDA ajustado para lote mínimo ({final_volume}) em {symbol}")
                         
                         if final_volume <= 0:
                              logger.warning(f"⚠️ Volume calculado para {symbol} inválido ({final_volume}). Ignorando.")

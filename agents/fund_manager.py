@@ -24,6 +24,30 @@ class FundManager:
         Executa o pipeline completo de decisão (ReAct).
         Thought -> Action -> Observation
         """
+        # 0. Check de Horário de Entrada (Entry Cutoff)
+        from datetime import datetime
+        import config
+        
+        now = datetime.now()
+        current_time = now.time()
+        
+        # Define horário de bloqueio de entrada (Sexta vs Outros dias)
+        if now.weekday() == 4: # Sexta-feira
+             no_entry_str = config.FRIDAY_NO_ENTRY_AFTER
+        else:
+             no_entry_str = config.NO_ENTRY_AFTER
+             
+        no_entry_time = datetime.strptime(no_entry_str, "%H:%M").time()
+        
+        if current_time >= no_entry_time:
+             logger.info(f"🛑 [FundManager] Horário limite de entradas atingido ({no_entry_str}). Bloqueando novas posições.")
+             return {
+                "symbol": symbol,
+                "action": "HOLD",
+                "reason": "Entry Cutoff Time Reached",
+                "size": 0.0
+            }
+
         logger.info(f"🏦 [FundManager] Avaliando ativo {symbol}...")
         
         # 1. Analyst Team (Incluindo OrderFlow)

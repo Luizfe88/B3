@@ -38,7 +38,8 @@ MAX_DAILY_LOSS_MONEY = config["risk_limits"]["max_daily_loss_money"]
 MAX_CONCURRENT_POSITIONS = config["risk_limits"]["max_concurrent_positions"]
 MAX_LOSSES_PER_SYMBOL_DEFAULT = config["risk_limits"]["max_losses_per_symbol_default"]
 MAX_LOSSES_PER_SYMBOL_AGGRESSIVE = config["risk_limits"]["max_losses_per_symbol_aggressive"]
-MAX_CAPITAL_ALLOCATION_PCT = config["risk_limits"].get("max_capital_allocation_pct", 0.20)
+MAX_CAPITAL_ALLOCATION_PCT = config["risk_limits"].get("max_capital_allocation_pct", 0.02)
+MAX_SECTOR_ALLOCATION_PCT = config["risk_limits"].get("max_sector_allocation_pct", 0.25)
 MAX_TOTAL_EXPOSURE_PCT = config["risk_limits"].get("max_total_exposure_pct", 1.50)
 MAX_NEW_POSITIONS_PER_HOUR = config["risk_limits"].get("max_new_positions_per_hour", 4)
 MARKET_REGIME_FILTER = config["risk_limits"].get("market_regime_filter", True)
@@ -47,7 +48,7 @@ MARKET_REGIME_FILTER = config["risk_limits"].get("market_regime_filter", True)
 MAX_SYMBOLS = config["risk_limits"][
     "max_concurrent_positions"
 ]  # Total de posições simultâneas
-MAX_PER_SECTOR = 3  # Máximo de posições por setor (padrão)
+MAX_PER_SECTOR = 10  # Máximo de posições por setor (Liberado, controlado por volume financeiro)
 
 # Entry Filters
 SPREAD_MAX_MULTIPLIER = config["entry_filters"]["spread_filter"][
@@ -337,10 +338,10 @@ SECTOR_MAP = {
     # ==========================================
     # 🥩 AGROPECUÁRIA E PROTEÍNAS
     # ==========================================
-    "JBSS3": "PROTEINAS",
-    "MRFG3": "PROTEINAS",
+    # "JBSS3": "PROTEINAS", # Falha de seleção
+    # "MRFG3": "PROTEINAS", # Falha de seleção
     "BEEF3": "PROTEINAS",
-    "BRFS3": "PROTEINAS",
+    # "BRFS3": "PROTEINAS", # Falha de seleção
     "MDIA3": "ALIMENTOS",
     "CAML3": "ALIMENTOS",
     "SLCE3": "AGRO",
@@ -475,10 +476,10 @@ SECTOR_MAP = {
 CORR_UPDATE_INTERVAL = 3600  # 1 hora
 
 # Horários de fechamento e bloqueio de entradas
-NO_ENTRY_AFTER = "17:30"
-CLOSE_ALL_BY = "17:45"
-FRIDAY_NO_ENTRY_AFTER = "17:00"
-FRIDAY_CLOSE_ALL_BY = "17:15"
+NO_ENTRY_AFTER = "16:15"
+CLOSE_ALL_BY = "16:45"
+FRIDAY_NO_ENTRY_AFTER = "15:15"
+FRIDAY_CLOSE_ALL_BY = "15:45"
 DAILY_RESET_TIME = "10:00"  # Reset diário do circuit breaker
 
 # Modo de operação

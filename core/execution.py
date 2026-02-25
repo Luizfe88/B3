@@ -41,6 +41,14 @@ class ExecutionEngine:
                 logger.error(f"❌ Falha ao inicializar MT5: {mt5.last_error()}")
                 self._connected = False
                 return False
+            
+            # Check terminal connection status
+            terminal_info = mt5.terminal_info()
+            if terminal_info is None:
+                logger.warning("⚠️ Falha ao obter informações do terminal.")
+            elif not terminal_info.connected:
+                 logger.warning("⚠️ Terminal MT5 inicializado, mas desconectado do servidor.")
+            
             self._connected = True
             logger.info("✅ Conectado ao MetaTrader 5")
             return True

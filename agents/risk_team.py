@@ -41,8 +41,9 @@ class RiskGuardian:
         new_exposure = (equity * config.MAX_CAPITAL_ALLOCATION_PCT * proposed_size)
         
         if (total_exposure + new_exposure) > max_exposure:
-             logger.warning(f"❌ [{self.name}] Limite Global de Exposição atingido! ({total_exposure:.2f} + {new_exposure:.2f} > {max_exposure:.2f})")
-             return {"approved": False, "reason": "Global Exposure Limit Reached"}
+             logger.warning(f"❌ [{self.name}] Limite Global de Exposição atingido! "
+                            f"(Atual: R${total_exposure:.2f} + Novo: R${new_exposure:.2f} > Limite: R${max_exposure:.2f} | Equity: R${equity:.2f})")
+             return {"approved": False, "reason": f"Exposure Limit (Eq: {equity:.0f})"}
 
         # 2. Throttle (Limite de novas posições por hora)
         recent_entries = market_context.get('recent_entries_count', 0)
@@ -50,7 +51,17 @@ class RiskGuardian:
              logger.warning(f"❌ [{self.name}] Throttle ativado! ({recent_entries} novas posições na última hora)")
              return {"approved": False, "reason": "Entry Throttle Active"}
 
-        # 3. Market Regime Guard (Filtro de Pânico)
+        # 3. Limite de Exposição Setorial (25% do Capital)
+        sector = config.SECTOR_MAP.get(symbol, "OUTROS")
+        current_sector_exposure = market_context.get(f'sector_exposure_{sector}', 0.0)
+        max_sector_exposure = equity * config.MAX_SECTOR_ALLOCATION_PCT
+        
+        if (current_sector_exposure + new_exposure) > max_sector_exposure:
+             logger.warning(f"❌ [{self.name}] Limite de Setor ({sector}) atingido! "
+                            f"(Atual: R${current_sector_exposure:.2f} + Novo: R${new_exposure:.2f} > Limite: R${max_sector_exposure:.2f})")
+             return {"approved": False, "reason": f"Sector Limit ({sector})"}
+
+        # 4. Market Regime Guard (Filtro de Pânico)
         if config.MARKET_REGIME_FILTER:
             ibov_trend = market_context.get('ibov_trend', 'neutral')
             if ibov_trend == 'bearish_extreme' and proposal.get('action') == 'BUY':
