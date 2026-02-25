@@ -97,6 +97,11 @@ class PositionManager:
             # Exposição = Volume * Preço Atual
             # (Para futuros, precisaria multiplicar pelo contrato, mas simplificado aqui)
             total += p['volume'] * p['current_price']
+            
+        # Loga as posições que estão somando
+        if total > 0:
+            logger.info(f"📊 Exposição atual: R$ {total:.2f} (em {len(positions)} posições)")
+            
         return total
 
     def count_recent_entries(self, minutes: int = 60) -> int:
