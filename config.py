@@ -535,3 +535,6 @@ TP_RULES = {
     "LATERAL": {"min_tp_atr": 1.5, "max_tp_atr": 3.0},
     "VOLATILE": {"min_tp_atr": 2.5, "max_tp_atr": 5.0},
 }
+
+# Lista de símbolos monitorados (derivada do mapa de setores)
+MONITORED_SYMBOLS = list(SECTOR_MAP.keys())

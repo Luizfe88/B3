@@ -53,7 +53,17 @@ class FeatureStore:
         df['bb_width'] = ta.volatility.bollinger_wband(df['close'], window=20, window_dev=2)
         
         # 4. Volume
-        df['obv'] = ta.volume.on_balance_volume(df['close'], df['volume'])
+        # Verifica se 'real_volume' ou 'tick_volume' está disponível e usa como 'volume'
+        if 'real_volume' in df.columns:
+            volume_col = df['real_volume']
+        elif 'tick_volume' in df.columns:
+            volume_col = df['tick_volume']
+        elif 'volume' in df.columns:
+             volume_col = df['volume']
+        else:
+             volume_col = pd.Series(0, index=df.index)
+
+        df['obv'] = ta.volume.on_balance_volume(df['close'], volume_col)
         
         # 5. Custom Targets (para treino)
         # Target: Retorno em 5 dias > 2% (exemplo)

@@ -10,14 +10,22 @@ class PositionManager:
     Gerencia o portfólio de posições.
     Responsável por calcular risco, stops e atualizações.
     """
-    def __init__(self, execution_engine: ExecutionEngine):
+    def __init__(self, execution_engine: ExecutionEngine, magic_number: int = 123456):
         self.execution = execution_engine
+        self.magic_number = magic_number
         self.active_positions = {}
         
-    def get_open_positions(self) -> List[Dict[str, Any]]:
+    def get_open_positions(self, filter_magic: bool = True) -> List[Dict[str, Any]]:
         raw_positions = self.execution.get_positions()
-        # Converte para formato interno
-        return [self._convert_position(p) for p in raw_positions]
+        
+        filtered = []
+        for p in raw_positions:
+            # Se filter_magic=True, só retorna posições do nosso robô
+            if filter_magic and p.magic != self.magic_number:
+                continue
+            filtered.append(self._convert_position(p))
+            
+        return filtered
 
     def _convert_position(self, pos) -> Dict[str, Any]:
         return {
@@ -29,16 +37,19 @@ class PositionManager:
             "sl": pos.sl,
             "tp": pos.tp,
             "profit": pos.profit,
+            "magic": pos.magic,
             "type": "BUY" if pos.type == 0 else "SELL"
         }
 
     def close_all(self, reason: str = "Emergency Close"):
         """
-        Fecha todas as posições abertas.
+        Fecha todas as posições abertas GERENCIADAS PELO BOT.
+        Ignora posições manuais ou de outros robôs (magic number diferente).
         """
-        positions = self.get_open_positions()
+        positions = self.get_open_positions(filter_magic=True) # Só pega as nossas
+        
         if not positions:
-            logger.info("✅ Nenhuma posição para fechar.")
+            logger.info("✅ Nenhuma posição gerenciada pelo bot para fechar.")
             return
 
         logger.warning(f"🚨 Fechando {len(positions)} posições por motivo: {reason}")
@@ -46,6 +57,7 @@ class PositionManager:
         for p in positions:
             # Check for futures if needed (user requirement)
             if self._is_future(p['symbol']):
+                logger.info(f"➡️ Pulando futuro: {p['symbol']}")
                 continue
                 
             self.execution.close_position(p['ticket'], p['symbol'])

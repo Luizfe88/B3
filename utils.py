@@ -7189,3 +7189,19 @@ def build_b3_universe(
     except Exception as e:
         logger.error(f"❌ Erro no Universe Builder: {e}")
         return {"ELITE": [], "OPORTUNIDADE": [], "TOTAL": []}
+
+def is_market_open() -> bool:
+    """
+    Verifica se o mercado está aberto.
+    Horário padrão B3: 09:00 - 17:55 (ajustável).
+    """
+    now = datetime.now().time()
+    # Definindo horário de negociação estendido para garantir funcionamento
+    start_time = datetime_time(9, 0)
+    end_time = datetime_time(17, 55)
+    
+    # Verifica final de semana (0=Segunda, 6=Domingo)
+    if datetime.now().weekday() >= 5:
+        return False
+        
+    return start_time <= now <= end_time

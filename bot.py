@@ -6,16 +6,21 @@ import time
 import threading
 from datetime import datetime
 from dotenv import load_dotenv
+import pandas as pd
 
 # Configuração de logs
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("logs/trading_agents.log"),
+        logging.FileHandler("logs/trading_agents.log", encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
+# Forçar encoding UTF-8 no stdout para Windows
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8')
+
 logger = logging.getLogger("MainBot")
 
 # Imports do sistema
@@ -24,6 +29,7 @@ from core.position_manager import PositionManager
 from agents.fund_manager import FundManager
 import config
 import utils
+import MetaTrader5 as mt5
 
 def main():
     logger.info("🚀 Iniciando TradingAgents-B3 Framework...")
@@ -61,11 +67,30 @@ def main():
             for symbol in symbols:
                 try:
                     # 1. Coleta dados de mercado (Market Data)
-                    # TODO: Implementar DataFeed robusto
+                    if not mt5.symbol_select(symbol, True):
+                        logger.warning(f"⚠️ Não foi possível selecionar {symbol} no MT5. Pulando.")
+                        continue
+                    
+                    # Candles (últimos 100 M15)
+                    candles = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M15, 100)
+                    if candles is None or candles.empty:
+                        logger.warning(f"⚠️ Dados insuficientes (candles) para {symbol}. Pulando.")
+                        continue
+                        
+                    # Ticks (últimos 1000 ticks)
+                    try:
+                        ticks = mt5.copy_ticks_from(symbol, datetime.now() - timedelta(hours=1), 1000, mt5.COPY_TICKS_ALL)
+                    except Exception:
+                        ticks = []
+
+                    # Preço atual
+                    tick = mt5.symbol_info_tick(symbol)
+                    current_price = tick.last if tick else candles['close'].iloc[-1]
+                    
                     market_data = {
-                        "price": 10.0, # Placeholder
-                        "ticks": [],
-                        "candles": []
+                        "price": current_price,
+                        "ticks": ticks if ticks is not None else [],
+                        "candles": candles
                     }
                     
                     # 2. Decisão do Fund Manager (Agentes)
