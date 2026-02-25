@@ -9,13 +9,16 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 
-# Diretórios de output
+# Diretórios de output e dados
 optimizer_output/
 logs/
 data/
 trades_log_*.txt
 daily_*.txt
 *.db
+.tmp.driveupload/
+ml_models/
+models/
 
 # Arquivos de configuração sensível
 config.py
@@ -23,12 +26,14 @@ config.py
 *.key
 *.pem
 
-# Arquivos temporários
+# Arquivos temporários e de legado
 *.tmp
 *.temp
 *.bak
 *.swp
 *~
+bot_old.py
+*.bkp
 
 # IDE
 .vscode/
