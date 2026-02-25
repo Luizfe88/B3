@@ -62,10 +62,16 @@ class TechnicalAnalyst(Analyst):
             
         prediction = self.predictor.predict(symbol, df)
         
+        trend = "neutral"
+        if prediction['signal'] == "BUY":
+            trend = "bullish"
+        elif prediction['signal'] == "SELL":
+            trend = "bearish"
+        
         result = {
             "type": "technical",
             "score": prediction['probability'],
-            "trend": "bullish" if prediction['signal'] == "BUY" else "bearish",
+            "trend": trend,
             "signals": ["ml_rf_ensemble"],
             "raw_prediction": prediction
         }

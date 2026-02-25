@@ -24,8 +24,10 @@ class OrderFlowAnalyst:
         # Simulação de análise de fluxo (real requer mt5.copy_ticks_from)
         ticks = data.get('ticks', [])
         
-        if not ticks:
-            return {
+        if not ticks or len(ticks) < 100:
+             # Retorna NEUTRAL real se não houver dados suficientes
+             logger.info(f"   ↳ Pressure: neutral | Imbalance: 0.00 | Score: 0.50 (No Data)")
+             return {
                 "type": "order_flow",
                 "score": 0.5,
                 "pressure": "neutral",

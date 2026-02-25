@@ -23,12 +23,12 @@ class RiskyTrader(Trader):
         tech = analysis.get('technical', {})
         
         # Compra
-        if tech.get('trend') == 'bullish' and debate_result.get('consensus') in ['BULLISH', 'NEUTRAL']:
+        if tech.get('trend') == 'bullish' and debate_result.get('consensus') == 'BULLISH':
             logger.info(f"   ↳ Proposta: COMPRA (Agressiva)")
             return {"action": "BUY", "size_multiplier": 1.2, "stop_loss_pct": 0.05} # Stop mais largo
             
         # Venda (Short)
-        if tech.get('trend') == 'bearish' and debate_result.get('consensus') in ['BEARISH', 'NEUTRAL']:
+        if tech.get('trend') == 'bearish' and debate_result.get('consensus') == 'BEARISH':
             logger.info(f"   ↳ Proposta: VENDA (Agressiva)")
             return {"action": "SELL", "size_multiplier": 1.2, "stop_loss_pct": 0.05}
             
@@ -43,12 +43,12 @@ class NeutralTrader(Trader):
         fund = analysis.get('fundamental', {})
         
         # Compra
-        if tech.get('trend') == 'bullish' and fund.get('valuation') != 'expensive':
+        if tech.get('trend') == 'bullish' and fund.get('valuation') != 'expensive' and debate_result.get('consensus') == 'BULLISH':
             logger.info(f"   ↳ Proposta: COMPRA (Balanceada)")
             return {"action": "BUY", "size_multiplier": 1.0, "stop_loss_pct": 0.03}
             
         # Venda (Short)
-        if tech.get('trend') == 'bearish' and fund.get('valuation') != 'cheap':
+        if tech.get('trend') == 'bearish' and fund.get('valuation') != 'cheap' and debate_result.get('consensus') == 'BEARISH':
              logger.info(f"   ↳ Proposta: VENDA (Balanceada)")
              return {"action": "SELL", "size_multiplier": 1.0, "stop_loss_pct": 0.03}
             

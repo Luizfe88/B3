@@ -81,6 +81,13 @@ def main():
             # Por enquanto, usa lista estática ou do config
             symbols = config.MONITORED_SYMBOLS
             
+            # Check de quantidade de posições antes do loop
+            open_count = len(position_manager.get_open_positions())
+            if open_count >= config.MAX_CONCURRENT_POSITIONS:
+                logger.info(f"🛑 Limite de posições atingido ({open_count}/{config.MAX_CONCURRENT_POSITIONS}). Aguardando...")
+                time.sleep(60)
+                continue
+            
             for symbol in symbols:
                 try:
                     # 1. Coleta dados de mercado (Market Data)
@@ -159,6 +166,10 @@ def main():
                         # Cálculo de SL/TP Dinâmico
                         ind = utils.quick_indicators_custom(symbol, mt5.TIMEFRAME_M15, df=candles)
                         sl, tp = utils.calculate_dynamic_sl_tp(symbol, "BUY", current_price, ind)
+                        
+                        if not sl or sl <= 0:
+                             logger.warning(f"⚠️ SL inválido para {symbol}. Bloqueando ordem.")
+                             continue
 
                         # Cria ordem
                         order = OrderParams(
@@ -199,6 +210,10 @@ def main():
                         # Cálculo de SL/TP Dinâmico
                         ind = utils.quick_indicators_custom(symbol, mt5.TIMEFRAME_M15, df=candles)
                         sl, tp = utils.calculate_dynamic_sl_tp(symbol, "SELL", current_price, ind)
+                        
+                        if not sl or sl <= 0:
+                             logger.warning(f"⚠️ SL inválido para {symbol}. Bloqueando ordem.")
+                             continue
                             
                         # Cria ordem
                         order = OrderParams(

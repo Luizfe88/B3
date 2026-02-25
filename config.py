@@ -37,9 +37,7 @@ MAX_RUIN_PROBABILITY = config["kelly_fraction"]["max_ruin_probability"]
 MAX_DAILY_LOSS_MONEY = config["risk_limits"]["max_daily_loss_money"]
 MAX_CONCURRENT_POSITIONS = config["risk_limits"]["max_concurrent_positions"]
 MAX_LOSSES_PER_SYMBOL_DEFAULT = config["risk_limits"]["max_losses_per_symbol_default"]
-MAX_LOSSES_PER_SYMBOL_AGGRESSIVE = config["risk_limits"][
-    "max_losses_per_symbol_aggressive"
-]
+MAX_LOSSES_PER_SYMBOL_AGGRESSIVE = config["risk_limits"]["max_losses_per_symbol_aggressive"]
 MAX_CAPITAL_ALLOCATION_PCT = config["risk_limits"].get("max_capital_allocation_pct", 0.20)
 MAX_TOTAL_EXPOSURE_PCT = config["risk_limits"].get("max_total_exposure_pct", 1.50)
 MAX_NEW_POSITIONS_PER_HOUR = config["risk_limits"].get("max_new_positions_per_hour", 4)
