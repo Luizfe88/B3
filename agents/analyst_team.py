@@ -14,24 +14,30 @@ class FundamentalAnalyst(Analyst):
         # Simula análise fundamentalista (P/L, ROE, Dívida)
         # TODO: Integrar API de fundamentos reais
         logger.info(f"🔎 [Fundamental] Analisando balanços de {symbol}...")
-        return {
+        
+        result = {
             "type": "fundamental",
             "score": 0.5, # Placeholder
             "valuation": "neutral",
             "risks": ["high_debt", "low_growth"],
             "drivers": ["dividends"]
         }
+        logger.info(f"   ↳ Valuation: {result['valuation']} | Score: {result['score']}")
+        return result
 
 class SentimentAnalyst(Analyst):
     def analyze(self, symbol: str, data: Dict[str, Any]) -> Dict[str, Any]:
         # Simula análise de redes sociais/notícias
         logger.info(f"🐦 [Sentiment] Escaneando Twitter/News para {symbol}...")
-        return {
+        
+        result = {
             "type": "sentiment",
             "score": 0.6,
             "sentiment": "cautiously_optimistic",
             "sources": ["twitter_br", "valor_economico"]
         }
+        logger.info(f"   ↳ Sentiment: {result['sentiment']} | Score: {result['score']}")
+        return result
 
 class TechnicalAnalyst(Analyst):
     def __init__(self):
@@ -56,13 +62,15 @@ class TechnicalAnalyst(Analyst):
             
         prediction = self.predictor.predict(symbol, df)
         
-        return {
+        result = {
             "type": "technical",
             "score": prediction['probability'],
             "trend": "bullish" if prediction['signal'] == "BUY" else "bearish",
             "signals": ["ml_rf_ensemble"],
             "raw_prediction": prediction
         }
+        logger.info(f"   ↳ Trend: {result['trend']} | ML Prob: {result['score']:.2%}")
+        return result
 
 from .orderflow_analyst import OrderFlowAnalyst
 

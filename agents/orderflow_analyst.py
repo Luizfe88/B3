@@ -52,6 +52,7 @@ class OrderFlowAnalyst:
         
         trend = "bullish" if imbalance > 0.1 else "bearish" if imbalance < -0.1 else "neutral"
         
+        logger.info(f"   ↳ Pressure: {trend} | Imbalance: {imbalance:.2f} | Score: {score:.2f}")
         return {
             "type": "order_flow",
             "score": score,

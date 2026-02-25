@@ -20,31 +20,55 @@ class ResearcherTeam:
         tech = analyst_reports.get('technical', {})
         fund = analyst_reports.get('fundamental', {})
         sent = analyst_reports.get('sentiment', {})
+        of = analyst_reports.get('orderflow', {})
         
-        # Rodada 1: Teses Iniciais
+        # Reset
+        self.bull_thesis = []
+        self.bear_thesis = []
         bull_score = 0
         bear_score = 0
         
+        # 1. Análise Técnica
         if tech.get('trend') == 'bullish':
-            self.bull_thesis.append("Tendência técnica de alta confirmada")
+            self.bull_thesis.append("Tendência técnica de alta")
             bull_score += 1
-        else:
-            self.bear_thesis.append("Tendência técnica fraca ou de baixa")
+        elif tech.get('trend') == 'bearish':
+            self.bear_thesis.append("Tendência técnica de baixa")
             bear_score += 1
             
+        # 2. Análise Fundamentalista
         if fund.get('valuation') == 'cheap':
-            self.bull_thesis.append("Valuation atrativo (P/L baixo)")
+            self.bull_thesis.append("Valuation descontado")
             bull_score += 1
-        elif 'high_debt' in fund.get('risks', []):
-            self.bear_thesis.append("Alto endividamento detectado")
+        elif fund.get('valuation') == 'expensive':
+            self.bear_thesis.append("Valuation esticado")
+            bear_score += 1
+            
+        # 3. Sentimento
+        if sent.get('sentiment') == 'optimistic':
+            self.bull_thesis.append("Sentimento positivo")
+            bull_score += 0.5
+        elif sent.get('sentiment') == 'pessimistic':
+            self.bear_thesis.append("Sentimento negativo")
+            bear_score += 0.5
+            
+        # 4. Fluxo
+        if of.get('pressure') == 'bullish':
+            self.bull_thesis.append("Fluxo comprador forte")
+            bull_score += 1
+        elif of.get('pressure') == 'bearish':
+            self.bear_thesis.append("Fluxo vendedor forte")
             bear_score += 1
             
         # Consenso
-        consensus = "NEUTRAL"
-        if bull_score > bear_score:
+        diff = bull_score - bear_score
+        
+        if diff >= 1.5:
             consensus = "BULLISH"
-        elif bear_score > bull_score:
+        elif diff <= -1.5:
             consensus = "BEARISH"
+        else:
+            consensus = "NEUTRAL"
             
         logger.info(f"🥊 Resultado do Debate: {consensus} (Bull: {bull_score} vs Bear: {bear_score})")
         

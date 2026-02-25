@@ -7205,3 +7205,65 @@ def is_market_open() -> bool:
         return False
         
     return start_time <= now <= end_time
+
+import math
+
+def normalize_volume(symbol: str, raw_quantity: float) -> float:
+    """
+    Ajusta a quantidade para o lote padrão da B3.
+    """
+    # Verifica se é mercado fracionário (final F) ou padrão
+    if symbol.endswith('F'):
+        lot_step = 1
+        min_lot = 1
+    else:
+        # Mercado Padrão (CSED3, VALE3, etc)
+        lot_step = 100
+        min_lot = 100
+
+    # Arredonda para baixo para o múltiplo mais próximo do lote (Floor)
+    qty = math.floor(raw_quantity / lot_step) * lot_step
+
+    if qty < min_lot:
+        return 0.0
+
+    return float(qty)
+
+def get_market_regime() -> str:
+    """
+    Analisa o regime de mercado atual (Bullish, Bearish, Neutral, Extreme Bearish).
+    Tenta usar IBOV ou WIN.
+    """
+    import MetaTrader5 as mt5
+    
+    # Tenta obter dados do Índice Futuro (Série Contínua) ou IBOV
+    indices = ['WIN', 'IBOV', 'IND']
+    symbol = None
+    
+    for idx in indices:
+        if mt5.symbol_select(idx, True):
+            symbol = idx
+            break
+            
+    if not symbol:
+        return 'neutral' # Sem dados
+        
+    # Análise simples de tendência (Média de 200 no H1)
+    rates = mt5.copy_rates_from(symbol, mt5.TIMEFRAME_H1, datetime.now(), 200)
+    
+    if rates is None or len(rates) < 200:
+        return 'neutral'
+        
+    df = pd.DataFrame(rates)
+    sma200 = df['close'].mean() # Simples
+    current_price = df['close'].iloc[-1]
+    
+    # Queda de mais de 2% abaixo da média de 200 = Pânico/Tendência forte de baixa
+    if current_price < sma200 * 0.98:
+        return 'bearish_extreme'
+    elif current_price < sma200:
+        return 'bearish'
+    elif current_price > sma200 * 1.02:
+        return 'bullish_strong'
+    else:
+        return 'bullish' # Acima da média mas perto

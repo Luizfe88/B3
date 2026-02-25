@@ -48,6 +48,23 @@ def main():
     
     try:
         while True:
+            # Verifica se deve fechar posições no final do dia
+            now = datetime.now().time()
+            close_time_str = config.CLOSE_ALL_BY # "17:45"
+            close_time = datetime.strptime(close_time_str, "%H:%M").time()
+            
+            if now >= close_time:
+                 # Se ainda tiver posições abertas, fecha tudo
+                 open_pos = position_manager.get_open_positions()
+                 if open_pos:
+                     logger.info("⏰ Horário de fechamento diário atingido. Zerando carteira...")
+                     position_manager.close_all(reason="End of Day")
+                 else:
+                     logger.info("💤 Mercado fechado ou horário limite atingido. Aguardando...")
+                 
+                 time.sleep(60)
+                 continue
+
             # Verifica horário de mercado
             if not utils.is_market_open():
                 logger.info("💤 Mercado fechado. Aguardando...")
@@ -87,37 +104,115 @@ def main():
                     tick = mt5.symbol_info_tick(symbol)
                     current_price = tick.last if tick else candles['close'].iloc[-1]
                     
+                    # Dados Globais de Risco
+                    account_info = mt5.account_info()
+                    equity = account_info.equity if account_info else 1000.0
+                    
                     market_data = {
                         "price": current_price,
                         "ticks": ticks if ticks is not None else [],
-                        "candles": candles
+                        "candles": candles,
+                        "equity": equity,
+                        "total_exposure": position_manager.get_total_exposure(),
+                        "recent_entries_count": position_manager.count_recent_entries(minutes=60),
+                        "ibov_trend": utils.get_market_regime()
                     }
                     
                     # 2. Decisão do Fund Manager (Agentes)
                     decision = fund_manager.decide(symbol, market_data)
                     
                     # 3. Execução
+                    # Verifica account info para gestão de risco e lote
+                    account_info = mt5.account_info()
+                    if account_info:
+                        equity = account_info.equity
+                    else:
+                        equity = 1000.0 # Fallback
+                    
                     if decision["action"] == "BUY":
                         # Valida se já tem posição
                         open_positions = position_manager.get_open_positions()
-                        if any(p['symbol'] == symbol for p in open_positions):
-                            logger.info(f"⏭️ Posição já existente em {symbol}. Ignorando.")
-                            continue
-                            
+                        for p in open_positions:
+                            if p['symbol'] == symbol:
+                                if p['type'] == 'SELL':
+                                    logger.info(f"🔄 Invertendo mão em {symbol} (SELL -> BUY)")
+                                    execution.close_position(p['ticket'], symbol)
+                                else:
+                                    logger.info(f"⏭️ Posição de COMPRA já existente em {symbol}. Mantendo.")
+                                    continue # Já comprado, não faz nada (poderia aumentar posição)
+
+                        # Cálculo de Lote:
+                        # 1. Base: Config do capital (configurável)
+                        # 2. Ajuste: size_multiplier do agente
+                        base_allocation_pct = config.MAX_CAPITAL_ALLOCATION_PCT
+                        size_multiplier = decision.get("size", 0.0)
+                        
+                        target_exposure = equity * base_allocation_pct * size_multiplier
+                        raw_qty = target_exposure / current_price if current_price > 0 else 0
+                        
+                        final_volume = utils.normalize_volume(symbol, raw_qty)
+                        
+                        if final_volume <= 0:
+                             logger.warning(f"⚠️ Volume calculado para {symbol} inválido ({final_volume}). Ignorando.")
+                             continue
+                        
+                        # Cálculo de SL/TP Dinâmico
+                        ind = utils.quick_indicators_custom(symbol, mt5.TIMEFRAME_M15, df=candles)
+                        sl, tp = utils.calculate_dynamic_sl_tp(symbol, "BUY", current_price, ind)
+
                         # Cria ordem
                         order = OrderParams(
                             symbol=symbol,
                             side=OrderSide.BUY,
-                            volume=100 * decision["size"], # Ajustar lote mínimo
+                            volume=final_volume,
                             price=0.0, # Market order
-                            sl=0.0, # Calcular SL
-                            tp=0.0  # Calcular TP
+                            sl=sl, # SL calculado
+                            tp=tp  # TP calculado
                         )
                         execution.send_order(order)
                         
                     elif decision["action"] == "SELL":
-                        # Implementar lógica de short
-                        pass
+                        # Valida se já tem posição
+                        open_positions = position_manager.get_open_positions()
+                        for p in open_positions:
+                            if p['symbol'] == symbol:
+                                if p['type'] == 'BUY':
+                                    logger.info(f"🔄 Invertendo mão em {symbol} (BUY -> SELL)")
+                                    execution.close_position(p['ticket'], symbol)
+                                else:
+                                    logger.info(f"⏭️ Posição de VENDA já existente em {symbol}. Mantendo.")
+                                    continue
+
+                        # Cálculo de Lote (Mesma lógica)
+                        base_allocation_pct = config.MAX_CAPITAL_ALLOCATION_PCT
+                        size_multiplier = decision.get("size", 0.0)
+                        
+                        target_exposure = equity * base_allocation_pct * size_multiplier
+                        raw_qty = target_exposure / current_price if current_price > 0 else 0
+                        
+                        final_volume = utils.normalize_volume(symbol, raw_qty)
+                        
+                        if final_volume <= 0:
+                             logger.warning(f"⚠️ Volume calculado para {symbol} inválido ({final_volume}). Ignorando.")
+                             continue
+                        
+                        # Cálculo de SL/TP Dinâmico
+                        ind = utils.quick_indicators_custom(symbol, mt5.TIMEFRAME_M15, df=candles)
+                        sl, tp = utils.calculate_dynamic_sl_tp(symbol, "SELL", current_price, ind)
+                            
+                        # Cria ordem
+                        order = OrderParams(
+                            symbol=symbol,
+                            side=OrderSide.SELL,
+                            volume=final_volume,
+                            price=0.0, # Market order
+                            sl=sl, # SL calculado
+                            tp=tp  # TP calculado
+                        )
+                        execution.send_order(order)
+                    
+                    elif decision["action"] == "HOLD":
+                        logger.info(f"⏸️ {symbol}: HOLD - Motivo: {decision.get('reason', 'N/A')}")
                         
                 except Exception as e:
                     logger.error(f"❌ Erro no loop para {symbol}: {e}")

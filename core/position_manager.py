@@ -1,7 +1,10 @@
 
 import logging
 from typing import Dict, Any, List
+from datetime import datetime, timedelta
 from .execution import ExecutionEngine, OrderParams, OrderSide
+import utils
+import config
 
 logger = logging.getLogger("PositionManager")
 
@@ -38,7 +41,8 @@ class PositionManager:
             "tp": pos.tp,
             "profit": pos.profit,
             "magic": pos.magic,
-            "type": "BUY" if pos.type == 0 else "SELL"
+            "type": "BUY" if pos.type == 0 else "SELL",
+            "time": pos.time # Importante para throttle
         }
 
     def close_all(self, reason: str = "Emergency Close"):
@@ -73,8 +77,8 @@ class PositionManager:
         """
         positions = self.get_open_positions()
         for p in positions:
-            # Implementar lógica de trailing stop aqui
-            pass
+            # Chama a função de trailing do utils (que já tem a lógica de ATR)
+            utils.manage_dynamic_trailing(p['symbol'], p['ticket'])
             
     def check_risk_limits(self) -> bool:
         """
@@ -82,3 +86,30 @@ class PositionManager:
         """
         # Implementar verificação de perda diária máxima
         return True
+
+    def get_total_exposure(self) -> float:
+        """
+        Calcula a exposição financeira total (soma de todas as posições abertas).
+        """
+        positions = self.get_open_positions(filter_magic=True)
+        total = 0.0
+        for p in positions:
+            # Exposição = Volume * Preço Atual
+            # (Para futuros, precisaria multiplicar pelo contrato, mas simplificado aqui)
+            total += p['volume'] * p['current_price']
+        return total
+
+    def count_recent_entries(self, minutes: int = 60) -> int:
+        """
+        Conta quantas posições foram abertas nos últimos X minutos.
+        Nota: mt5.positions_get retorna 'time' como timestamp de abertura.
+        """
+        raw_positions = self.execution.get_positions()
+        count = 0
+        limit_time = datetime.now().timestamp() - (minutes * 60)
+        
+        for p in raw_positions:
+            if p.magic == self.magic_number:
+                if p.time >= limit_time:
+                    count += 1
+        return count

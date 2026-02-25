@@ -4,6 +4,8 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger("RiskManagementTeam")
 
+import config
+
 class RiskGuardian:
     def __init__(self, name: str, tolerance: float):
         self.name = name
@@ -21,7 +23,7 @@ class RiskGuardian:
         logger.info(f"👮 [{self.name}] Validando risco para {symbol}...")
         
         # Simulação de verificação
-        max_position_size = 0.20 # 20% capital
+        max_position_size = 1.5 # 150% do lote base (flexibilidade)
         proposed_size = proposal.get('size_multiplier', 0.0)
         
         if proposed_size > max_position_size:
@@ -29,7 +31,33 @@ class RiskGuardian:
             proposal['size_multiplier'] = max_position_size
             proposal['adjusted'] = True
             
-        # Verificação de correlação com IBOV
+        # 1. Limite Global de Exposição Financeira
+        total_exposure = market_context.get('total_exposure', 0.0)
+        equity = market_context.get('equity', 1000.0)
+        max_exposure = equity * config.MAX_TOTAL_EXPOSURE_PCT
+        
+        # Estima exposição da nova ordem
+        current_price = market_context.get('price', 0.0)
+        new_exposure = (equity * config.MAX_CAPITAL_ALLOCATION_PCT * proposed_size)
+        
+        if (total_exposure + new_exposure) > max_exposure:
+             logger.warning(f"❌ [{self.name}] Limite Global de Exposição atingido! ({total_exposure:.2f} + {new_exposure:.2f} > {max_exposure:.2f})")
+             return {"approved": False, "reason": "Global Exposure Limit Reached"}
+
+        # 2. Throttle (Limite de novas posições por hora)
+        recent_entries = market_context.get('recent_entries_count', 0)
+        if recent_entries >= config.MAX_NEW_POSITIONS_PER_HOUR:
+             logger.warning(f"❌ [{self.name}] Throttle ativado! ({recent_entries} novas posições na última hora)")
+             return {"approved": False, "reason": "Entry Throttle Active"}
+
+        # 3. Market Regime Guard (Filtro de Pânico)
+        if config.MARKET_REGIME_FILTER:
+            ibov_trend = market_context.get('ibov_trend', 'neutral')
+            if ibov_trend == 'bearish_extreme' and proposal.get('action') == 'BUY':
+                 logger.warning(f"⚠️ [{self.name}] Market Regime Guard: Bloqueando COMPRA em pânico.")
+                 return {"approved": False, "reason": "Market Panic Mode"}
+
+        # 4. Verificação de correlação com IBOV
         corr = market_context.get('ibov_correlation', 0.5)
         if corr > 0.8 and self.tolerance < 0.5:
             logger.warning(f"⚠️ [{self.name}] Alta correlação com mercado em queda. Bloqueando.")
@@ -54,7 +82,7 @@ class RiskTeam:
         final_proposal = None
         
         for p in proposals:
-            if p.get('action') == 'BUY':
+            if p.get('action') in ['BUY', 'SELL']:
                 # Valida contra o guardião correspondente ao perfil do trader?
                 # Simplificação: Valida contra o Neutro por padrão
                 res = self.guardians[1].validate_trade(symbol, p, market_context)

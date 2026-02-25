@@ -40,6 +40,10 @@ MAX_LOSSES_PER_SYMBOL_DEFAULT = config["risk_limits"]["max_losses_per_symbol_def
 MAX_LOSSES_PER_SYMBOL_AGGRESSIVE = config["risk_limits"][
     "max_losses_per_symbol_aggressive"
 ]
+MAX_CAPITAL_ALLOCATION_PCT = config["risk_limits"].get("max_capital_allocation_pct", 0.20)
+MAX_TOTAL_EXPOSURE_PCT = config["risk_limits"].get("max_total_exposure_pct", 1.50)
+MAX_NEW_POSITIONS_PER_HOUR = config["risk_limits"].get("max_new_positions_per_hour", 4)
+MARKET_REGIME_FILTER = config["risk_limits"].get("market_regime_filter", True)
 
 # Position Limits (mapeados do risk_limits)
 MAX_SYMBOLS = config["risk_limits"][
