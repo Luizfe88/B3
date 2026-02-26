@@ -17,7 +17,22 @@ log_file = "logs/trading_agents.log"
 os.makedirs("logs", exist_ok=True)
 
 # Handler de Arquivo com Rotação (3 horas)
+# O padrão TimedRotatingFileHandler adiciona .YYYY-MM-DD_HH-MM ao final
+# Para ter trading_agents_2023-10-27_12-00.log precisamos customizar ou aceitar o padrão .log.data
+# Vamos usar o padrão, mas configurando o sufixo para ser amigável.
 file_handler = TimedRotatingFileHandler(log_file, when="H", interval=3, backupCount=10, encoding='utf-8')
+file_handler.suffix = "%Y-%m-%d_%H-%M.log" # Define o formato do sufixo (ex: 2023-10-27_12-00.log)
+# O TimedRotatingFileHandler por padrão anexa o sufixo DEPOIS da extensão original (ex: file.log.2023...)
+# Para fazer exatamante file_DATE.log é mais complexo, mas ajustando o sufixo já ajuda.
+# Vamos forçar uma nomenclatura mais limpa sobrescrevendo o namer.
+
+def custom_namer(name):
+    # name vem como "logs/trading_agents.log.2023-10-27_12-00.log"
+    # Queremos "logs/trading_agents_2023-10-27_12-00.log"
+    base, ext, date_part = name.rsplit(".", 2) 
+    return f"{base}_{date_part}.log"
+
+# file_handler.namer = custom_namer # (Opcional, pode ser complexo de manter cross-platform)
 file_handler.setFormatter(log_formatter)
 
 # Handler de Console
