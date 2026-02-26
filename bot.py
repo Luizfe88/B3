@@ -7,16 +7,29 @@ import threading
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import pandas as pd
+from logging.handlers import TimedRotatingFileHandler
 
-# Configuração de logs
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("logs/trading_agents.log", encoding='utf-8'),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Configuração de logs com rotação a cada 3 horas
+log_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+log_file = "logs/trading_agents.log"
+
+# Garante diretório de logs
+os.makedirs("logs", exist_ok=True)
+
+# Handler de Arquivo com Rotação (3 horas)
+file_handler = TimedRotatingFileHandler(log_file, when="H", interval=3, backupCount=10, encoding='utf-8')
+file_handler.setFormatter(log_formatter)
+
+# Handler de Console
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setFormatter(log_formatter)
+
+# Configura logger raiz
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(file_handler)
+root_logger.addHandler(console_handler)
+
 # Forçar encoding UTF-8 no stdout para Windows
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
