@@ -248,9 +248,9 @@ def get_current_mode_params() -> dict:
 
 
 # Configurações de Horário de Trading (adicionadas para corrigir erros)
-TRADING_START = "10:20"
+TRADING_START = "10:30"
 TRADING_LUNCH_BREAK_START = "11:45"
-TRADING_LUNCH_BREAK_END = "13:05"
+TRADING_LUNCH_BREAK_END = "13:15"
 
 # Mapeamento de Setores (para pesos adaptativos)
 SECTOR_MAP = {

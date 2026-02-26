@@ -104,9 +104,21 @@ def main():
             symbols = valid_symbols
             
             # Check de quantidade de posições antes do loop
-            open_count = len(position_manager.get_open_positions())
+            open_positions_list = position_manager.get_open_positions()
+            open_count = len(open_positions_list)
+            
+            # Log de auditoria de posições
+            if open_count > 0:
+                 logger.debug(f"🔍 Posições Abertas ({open_count}): {[f'{p['symbol']} ({p['magic']})' for p in open_positions_list]}")
+
             if open_count >= config.MAX_CONCURRENT_POSITIONS:
-                logger.info(f"🛑 Limite de posições atingido ({open_count}/{config.MAX_CONCURRENT_POSITIONS}). Aguardando...")
+                logger.info(f"🛑 Limite de posições atingido ({open_count}/{config.MAX_CONCURRENT_POSITIONS}).")
+                
+                # Se exceder (ex: por posições manuais ou erro anterior), tenta reduzir?
+                # Por enquanto, apenas atualiza stops das existentes e aguarda
+                position_manager.update_stops()
+                
+                logger.info("💤 Aguardando liberação de slots...")
                 time.sleep(60)
                 continue
             
@@ -238,6 +250,12 @@ def main():
                              logger.warning(f"⚠️ SL inválido para {symbol}. Bloqueando ordem.")
                              continue
 
+                        # Double Check de Posições ANTES de enviar ordem
+                        current_open = len(position_manager.get_open_positions())
+                        if current_open >= config.MAX_CONCURRENT_POSITIONS:
+                             logger.warning(f"🛑 [FAILSAFE] Limite de posições atingido ({current_open}/{config.MAX_CONCURRENT_POSITIONS}) antes de BUY em {symbol}. Abortando.")
+                             continue
+
                         # Cria ordem
                         order = OrderParams(
                             symbol=symbol,
@@ -294,6 +312,12 @@ def main():
                              logger.warning(f"⚠️ SL inválido para {symbol}. Bloqueando ordem.")
                              continue
                             
+                        # Double Check de Posições ANTES de enviar ordem
+                        current_open = len(position_manager.get_open_positions())
+                        if current_open >= config.MAX_CONCURRENT_POSITIONS:
+                             logger.warning(f"🛑 [FAILSAFE] Limite de posições atingido ({current_open}/{config.MAX_CONCURRENT_POSITIONS}) antes de SELL em {symbol}. Abortando.")
+                             continue
+
                         # Cria ordem
                         order = OrderParams(
                             symbol=symbol,

@@ -23,9 +23,15 @@ class PositionManager:
         
         filtered = []
         for p in raw_positions:
-            # Se filter_magic=True, só retorna posições do nosso robô
-            if filter_magic and p.magic != self.magic_number:
-                continue
+            # Se filter_magic=True, só retorna posições do nosso robô (Magic Number 2026)
+            # O bot usa magic=2026 fixo no utils.py, mas aqui estava magic_number=123456
+            # Vamos alinhar para aceitar ambos ou apenas o correto.
+            
+            # Ajuste crítico: Se o utils.py usa 2026, devemos filtrar por ele também.
+            if filter_magic:
+                if p.magic not in [self.magic_number, 2026]:
+                     continue
+                     
             filtered.append(self._convert_position(p))
             
         return filtered
