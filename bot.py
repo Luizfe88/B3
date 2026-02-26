@@ -366,6 +366,9 @@ def main():
             # Gerenciamento de posições abertas
             position_manager.update_stops()
             
+            # Verifica e loga trades fechados (histórico recente)
+            utils.check_and_log_closed_trades()
+            
             # Sleep para evitar sobrecarga (Timeframe M15/H1 sugerido)
             time.sleep(60)
             

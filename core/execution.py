@@ -98,19 +98,37 @@ class ExecutionEngine:
         if result.retcode != mt5.TRADE_RETCODE_DONE:
             logger.error(f"❌ Ordem rejeitada ({order.symbol}): {result.comment} (Code: {result.retcode})")
             return {
-                "status": "rejected",
-                "retcode": result.retcode,
-                "comment": result.comment,
-                "request": request
+                "status": "error", 
+                "message": f"MT5 Error: {result.comment}",
+                "retcode": result.retcode
             }
 
         logger.info(f"✅ Ordem executada: {order.symbol} {order.side.value} {order.volume} @ {result.price} (Ticket: {result.order})")
+        
+        # LOGAR TRADE NO TXT (INTEGRAÇÃO)
+        try:
+             import utils
+             if result.retcode == mt5.TRADE_RETCODE_DONE:
+                 trade_data = {
+                     "ticket": result.order, # ID da ordem gerada
+                     "time": time.strftime("%H:%M:%S", time.localtime()),
+                     "symbol": order.symbol,
+                     "type": order.side.value,
+                     "volume": order.volume,
+                     "price": result.price if hasattr(result, 'price') else order.price,
+                     "profit": 0.0, # Entrada não tem lucro ainda
+                     "comment": order.comment
+                 }
+                 utils.log_trade_to_txt(trade_data)
+        except Exception as e:
+             logger.error(f"Erro ao logar trade TXT: {e}")
+
         return {
-            "status": "filled",
-            "ticket": result.order,
-            "price": result.price,
-            "volume": result.volume,
-            "comment": result.comment
+            "status": "success",
+            "message": "Order executed successfully",
+            "order_id": result.order,
+            "price": result.price if hasattr(result, 'price') else order.price,
+            "volume": result.volume if hasattr(result, 'volume') else order.volume
         }
 
     def close_position(self, ticket: int, symbol: str, volume: Optional[float] = None) -> bool:

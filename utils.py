@@ -5777,6 +5777,129 @@ def send_daily_performance_report():
         logger.error(f"Erro no relatório diário: {e}")
 
 
+def log_trade_to_txt(trade_info: Dict[str, Any]):
+    """
+    Registra trade em arquivo TXT diário.
+    Usa o Ticket do MT5 como identificador único.
+    Formato: ID | Hora | Símbolo | Tipo | Volume | Preço | Lucro
+    """
+    try:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        filename = f"trades_{today_str}.txt"
+        filepath = os.path.join("logs", filename)
+        
+        # Garante diretório
+        os.makedirs("logs", exist_ok=True)
+        
+        # Cabeçalho se arquivo novo
+        if not os.path.exists(filepath):
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write("TICKET | TIME | SYMBOL | TYPE | VOL | PRICE | PROFIT | COMMENT\n")
+                
+        # Formata linha
+        line = (
+            f"{trade_info.get('ticket')} | "
+            f"{trade_info.get('time')} | "
+            f"{trade_info.get('symbol')} | "
+            f"{trade_info.get('type')} | "
+            f"{trade_info.get('volume')} | "
+            f"{trade_info.get('price')} | "
+            f"{trade_info.get('profit', 0.0):.2f} | "
+            f"{trade_info.get('comment', '')}\n"
+        )
+        
+        with open(filepath, "a", encoding="utf-8") as f:
+            f.write(line)
+            
+        logger.info(f"📝 Trade {trade_info.get('ticket')} salvo em {filename}")
+        
+    except Exception as e:
+        logger.error(f"Erro ao salvar trade em TXT: {e}")
+
+
+def check_and_log_closed_trades():
+    """
+    Verifica trades fechados recentemente no MT5 e salva no TXT.
+    Deve ser chamado periodicamente pelo bot.
+    """
+    try:
+        from_date = datetime.now() - timedelta(hours=1)
+        to_date = datetime.now() + timedelta(minutes=1)
+        
+        with mt5_lock:
+            # history_deals_get retorna negócios executados (Entrada e Saída)
+            deals = mt5.history_deals_get(from_date, to_date)
+            
+        if not deals:
+            return
+
+        for deal in deals:
+            # Filtra apenas saídas (Entry Out ou Entry In/Out) que geraram lucro/prejuízo
+            if deal.entry == mt5.DEAL_ENTRY_OUT or deal.entry == mt5.DEAL_ENTRY_INOUT:
+                 # Verifica se já logamos esse deal? (Idealmente sim, mas TXT é append only)
+                 # Vamos logar com comentário "EXIT"
+                 
+                 trade_data = {
+                     "ticket": deal.ticket, # Ticket do DEAL de saída
+                     "time": datetime.fromtimestamp(deal.time).strftime("%H:%M:%S"),
+                     "symbol": deal.symbol,
+                     "type": "EXIT", # Simplificação
+                     "volume": deal.volume,
+                     "price": deal.price,
+                     "profit": deal.profit,
+                     "comment": f"Exit (Deal {deal.ticket})"
+                 }
+                 # Opcional: Verificar duplicidade lendo o arquivo (custoso) ou cache em memória
+                 # Por enquanto, logamos tudo. O usuário pode filtrar por Ticket.
+                 log_trade_to_txt(trade_data)
+                 
+    except Exception as e:
+        logger.error(f"Erro ao verificar trades fechados: {e}")
+
+_last_logged_deals = set()
+
+def check_and_log_closed_trades():
+    """
+    Verifica trades fechados recentemente no MT5 e salva no TXT.
+    Evita duplicidade usando cache simples.
+    """
+    global _last_logged_deals
+    try:
+        from_date = datetime.now() - timedelta(hours=1)
+        to_date = datetime.now() + timedelta(minutes=1)
+        
+        with mt5_lock:
+            # history_deals_get retorna negócios executados (Entrada e Saída)
+            deals = mt5.history_deals_get(from_date, to_date)
+            
+        if not deals:
+            return
+
+        for deal in deals:
+            # Filtra apenas saídas (Entry Out ou Entry In/Out) que geraram lucro/prejuízo
+            if (deal.entry == mt5.DEAL_ENTRY_OUT or deal.entry == mt5.DEAL_ENTRY_INOUT) and deal.ticket not in _last_logged_deals:
+                 
+                 trade_data = {
+                     "ticket": deal.ticket, # Ticket do DEAL de saída
+                     "time": datetime.fromtimestamp(deal.time).strftime("%H:%M:%S"),
+                     "symbol": deal.symbol,
+                     "type": "EXIT",
+                     "volume": deal.volume,
+                     "price": deal.price,
+                     "profit": deal.profit,
+                     "comment": f"Exit (Deal {deal.ticket})"
+                 }
+                 log_trade_to_txt(trade_data)
+                 _last_logged_deals.add(deal.ticket)
+                 
+                 # Limpa cache antigo para não estourar memória
+                 if len(_last_logged_deals) > 1000:
+                     _last_logged_deals = set(list(_last_logged_deals)[-500:])
+                 
+    except Exception as e:
+        logger.error(f"Erro ao verificar trades fechados: {e}")
+
+
 # =========================================================
 # 📰 NEWS & EVENTS
 # =========================================================
