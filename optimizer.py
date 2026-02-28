@@ -43,10 +43,20 @@ try:
     from sklearn.model_selection import cross_val_score, StratifiedKFold
     from sklearn.metrics import accuracy_score
     from joblib import dump
+    from validation.permutation_test import PermutationValidator
 
     SKLEARN_AVAILABLE = True
 except Exception:
     SKLEARN_AVAILABLE = False
+
+# Import Telegram alert utility
+try:
+    from utils import send_telegram_message
+except Exception:
+
+    def send_telegram_message(msg: str):
+        pass  # Graceful fallback if Telegram unavailable
+
 
 try:
     import xgboost as xgb
@@ -65,6 +75,11 @@ try:
     import utils
 except Exception:
     utils = None
+
+try:
+    from datetime import datetime
+except Exception:
+    datetime = None
 
 
 def is_valid_dataframe(df, min_rows: int = 1) -> bool:
@@ -932,7 +947,7 @@ def optimize_symbol_robust(
         if processed % 20 == 0:
             elapsed = time.time() - start_time
             logger.info(
-                f"{symbol}: processed {processed}/{total} combos ({processed/total*100:.1f}%) elapsed {elapsed:.1f}s"
+                f"{symbol}: processed {processed}/{total} combos ({processed / total * 100:.1f}%) elapsed {elapsed:.1f}s"
             )
 
     if not results:
@@ -1076,9 +1091,96 @@ def train_ml_model(
         best_model = search.best_estimator_
         scores_acc = cross_val_score(best_model, Xv, y, cv=cv, scoring="accuracy")
 
+        # --- Statistical validation (Kill Switch via Permutation Test) ---
+        trade_returns = None
+        try:
+            # Prepare predicted trades and realized future returns (lookahead=5)
+            preds = best_model.predict(Xv)
+            # future returns over lookahead bars
+            lookahead = 5
+            if "close" in df.columns:
+                future_returns = (
+                    df["close"].shift(-lookahead).loc[Xv.index]
+                    / df["close"].loc[Xv.index]
+                    - 1
+                )
+            else:
+                future_returns = pd.Series([0.0] * len(Xv), index=Xv.index)
+
+            # returns for trades where model predicted entry (1)
+            trade_returns = future_returns[preds == 1].dropna()
+
+            validator = PermutationValidator(n_permutations=1000)
+            valid = validator.run_test(trade_returns)
+
+            if not valid:
+                # ⚠️ Model rejected at statistical gate
+                alert_msg = (
+                    f"🚨 <b>KILL SWITCH ATIVADO</b>\n"
+                    f"<b>Símbolo:</b> {symbol}\n"
+                    f"<b>Motivo:</b> Permutation Test (p > 0.05)\n"
+                    f"<b>Ação:</b> Modelo rejeitado. Versão anterior mantida em produção.\n"
+                    f"<b>Hora:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                try:
+                    send_telegram_message(alert_msg)
+                    logger.info("📱 Alerta enviado ao Telegram")
+                except Exception as e:
+                    logger.warning(f"⚠️ Não foi possível enviar alerta Telegram: {e}")
+
+                logger.critical(
+                    "🚨 KILL SWITCH: Modelo reprovado no Permutation Test (p-value > 0.05). Edge não comprovado. Abortando deploy."
+                )
+                return None
+        except Exception as validation_err:
+            logger.exception(
+                "Falha ao executar validação estatística (Permutation Test). Rejeitando modelo por segurança."
+            )
+            # Falha na validação = rejeita por precaução
+            return None
+
+        # --- Persist model ONLY if validation passed ---
+        if trade_returns is None or len(trade_returns) == 0:
+            logger.error(f"❌ {symbol}: No valid trade returns to persist.")
+            return None
+
         model_path = os.path.join(base_dir, f"ml_{symbol}.joblib")
         try:
+            # Prepare a minimal trade history from the selected trade_returns
+            trade_history = []
+            try:
+                for ts, val in trade_returns.dropna().items():
+                    trade_history.append({"timestamp": str(ts), "pnl_pct": float(val)})
+            except Exception:
+                # fallback: empty history
+                trade_history = []
+
+            # Save model artifact (ml_<symbol>.joblib)
             dump(best_model, model_path)
+            logger.info(f"✅ Modelo de símbolo salvo: {model_path}")
+
+            # 🔒 VAULT: Also update the production anti-chop model (protected by validation)
+            try:
+                anti_path = getattr(utils, "ANTI_CHOP_MODEL_PATH", "anti_chop_rf.pkl")
+                dump(best_model, anti_path)
+                logger.info(
+                    f"✅ [VAULT] Anti-chop model atualizado (validado): {anti_path}"
+                )
+            except Exception:
+                logger.exception("Falha ao salvar anti_chop model (não-crítico)")
+
+            # Save trade history atomically
+            try:
+                history_path = "ml_trade_history.json"
+                if hasattr(utils, "atomic_save_json"):
+                    utils.atomic_save_json(history_path, trade_history)
+                else:
+                    with open(history_path, "w", encoding="utf-8") as f:
+                        json.dump(trade_history, f, ensure_ascii=False, indent=2)
+                logger.info(f"✅ Histórico ML salvo (validado): {history_path}")
+            except Exception:
+                logger.exception("Falha ao salvar ml_trade_history.json (não-crítico)")
+
         except Exception:
             import pickle
 
@@ -1220,7 +1322,7 @@ if __name__ == "__main__":
                         _summary_acc = [(sym, total_trades, oos_trades, pf, sharpe_v)]
                 else:
                     logger.info(
-                        f"{sym}: no valid results (trades_oos < {MIN_TRADES_OOS} ou max_dd > {int(MAX_DD_OOS*100)}%)"
+                        f"{sym}: no valid results (trades_oos < {MIN_TRADES_OOS} ou max_dd > {int(MAX_DD_OOS * 100)}%)"
                     )
                     try:
                         _summary_acc.append((sym, 0, 0, 0.0, 0.0))

@@ -4,6 +4,8 @@ from typing import Dict, Any, List
 logger = logging.getLogger("RiskManagementTeam")
 
 import config
+import pandas as pd
+from validation.permutation_test import PermutationValidator
 
 
 class RiskGuardian:
@@ -30,22 +32,26 @@ class RiskGuardian:
         # CORREÇÃO CRÍTICA: size_multiplier é multiplicador do risco base, não do capital
         # Risco base é definido em config.MAX_CAPITAL_ALLOCATION_PCT (padrão: 2%)
         base_risk_pct = config.MAX_CAPITAL_ALLOCATION_PCT  # Ex: 0.02 (2%)
-        proposed_size_multiplier = proposal.get("size_multiplier", 0.0)
+        # Interpret size_multiplier as multiplier of the BASE RISK (not of capital)
+        proposed_size_multiplier = float(proposal.get("size_multiplier", 1.0))
 
-        # Calcula o risco efetivo desta proposta
+        # Calcula o risco efetivo desta proposta (por trade)
         effective_risk_pct = base_risk_pct * proposed_size_multiplier
 
-        # Limita o risco máximo que um trader individual pode tomar
-        # SafeTrader: 0.8 * 2% = 1.6%, RiskyTrader: 1.2 * 2% = 2.4%, etc
-        max_effective_risk = (
-            base_risk_pct * 1.5
-        )  # Máximo 150% do risco base = 3% por trade
+        # HARD LIMIT absoluto por trade (configurável via config.HARD_RISK_LIMIT_PCT)
+        HARD_LIMIT = float(getattr(config, "HARD_RISK_LIMIT_PCT", 0.05))
+        if effective_risk_pct > HARD_LIMIT:
+            logger.critical(
+                f"🚨 [{self.name}] Hard risk limit exceeded: {effective_risk_pct:.2%} > {HARD_LIMIT:.2%}. Bloqueando proposta."
+            )
+            return {"approved": False, "reason": "Hard risk limit exceeded"}
 
+        # Limite prudencial (ajuste automático) — não ultrapassa 150% do risco base
+        max_effective_risk = base_risk_pct * 1.5
         if effective_risk_pct > max_effective_risk:
             logger.warning(
-                f"❌ [{self.name}] Risco efetivo excessivo ({effective_risk_pct:.2%} > {max_effective_risk:.2%}). Ajustando."
+                f"❌ [{self.name}] Risco efetivo alto ({effective_risk_pct:.2%} > {max_effective_risk:.2%}). Ajustando para prudência."
             )
-            # Ajusta o multiplicador de tamanho para atingir o máximo permitido
             proposal["size_multiplier"] = max_effective_risk / base_risk_pct
             proposal["adjusted"] = True
             effective_risk_pct = max_effective_risk
@@ -105,9 +111,36 @@ class RiskGuardian:
         return {"approved": True, "adjusted_proposal": proposal}
 
 
+class StatisticalGuardian(RiskGuardian):
+    def __init__(self):
+        super().__init__("StatValidator", tolerance=0.1)
+        self.validator = PermutationValidator()
+
+    def validate_strategy_health(self, trade_history: list) -> bool:
+        """
+        Kill Switch baseado em teste de permutação sobre PnL% recentes.
+        Retorna False se a estratégia perder o diferencial estatístico.
+        """
+        try:
+            returns = pd.Series([t.get("pnl_pct", 0.0) for t in trade_history])
+        except Exception:
+            logger.warning(
+                "[StatValidator] trade_history não está no formato esperado."
+            )
+            return True
+
+        if not self.validator.run_test(returns):
+            logger.critical(
+                "🚨 [KILL SWITCH] Estratégia perdeu o diferencial estatístico!"
+            )
+            return False
+        return True
+
+
 class RiskTeam:
     def __init__(self):
         self.guardians = [
+            StatisticalGuardian(),
             RiskGuardian("RiskSeeker", 0.8),
             RiskGuardian("Neutral", 0.5),
             RiskGuardian("Conservative", 0.2),
