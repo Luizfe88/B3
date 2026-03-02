@@ -63,18 +63,18 @@ class SafeTrader(Trader):
         fund = analysis.get('fundamental', {})
         sent = analysis.get('sentiment', {})
         
-        # Compra
+        # Compra — FIX: aceita 'fair' além de 'cheap' (antes 'fair' bloqueava o BUY)
         if (tech.get('trend') == 'bullish' and 
-            fund.get('valuation') == 'cheap' and 
+            fund.get('valuation') in ('cheap', 'fair') and 
             sent.get('sentiment') == 'optimistic'):
-            logger.info(f"   ↳ Proposta: COMPRA (Conservadora)")
-            return {"action": "BUY", "size_multiplier": 0.8, "stop_loss_pct": 0.015} # Stop curto
+            logger.info(f"   ↳ Proposta: COMPRA (Conservadora) — val={fund.get('valuation')}")
+            return {"action": "BUY", "size_multiplier": 0.8, "stop_loss_pct": 0.015}
             
-        # Venda (Short) - Conservador raramente shorta, mas se tudo estiver ruim...
+        # Venda (Short)
         if (tech.get('trend') == 'bearish' and 
-            fund.get('valuation') == 'expensive' and 
+            fund.get('valuation') in ('expensive', 'neutral') and 
             sent.get('sentiment') == 'pessimistic'):
-            logger.info(f"   ↳ Proposta: VENDA (Conservadora)")
+            logger.info(f"   ↳ Proposta: VENDA (Conservadora) — val={fund.get('valuation')}")
             return {"action": "SELL", "size_multiplier": 0.8, "stop_loss_pct": 0.015}
 
         return {"action": "HOLD", "reason": "Risco inaceitável"}

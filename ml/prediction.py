@@ -171,16 +171,16 @@ class MLPredictor:
     def predict(self, symbol: str, current_data: pd.DataFrame) -> Dict[str, Any]:
         """
         Gera predição de compra/venda usando o modelo carregado.
+        FIX: Fallback técnico real quando RF indisponível (em vez de sempre NEUTRAL 0.5).
         """
         if self.rf_model is None:
-            # Fallback se modelo não carregar
-            logger.warning(f"⚠️ Modelo RF não disponível para predição de {symbol}.")
-            return {"probability": 0.5, "signal": "NEUTRAL", "reason": "model_missing"}
+            logger.warning(f"⚠️ Modelo RF não disponível para {symbol} — usando fallback técnico.")
+            return self._technical_fallback(current_data)
             
         # Calcula indicadores
         indicators = self.compute_indicators(current_data)
         if not indicators:
-             return {"probability": 0.5, "signal": "NEUTRAL", "reason": "insufficient_data"}
+             return self._technical_fallback(current_data)
              
         # Extrai features
         features = self.extract_features(symbol, indicators)
@@ -198,32 +198,27 @@ class MLPredictor:
         # Predição
         try:
             prob = self.rf_model.predict_proba(features_scaled)[0]
-            # Probabilidade de classes: 0=BUY, 1=SELL, 2=HOLD (Assumindo ordem do treinamento)
-            # VERIFICAR: No treino do ml_signals.py:
-            # y = 0 (BUY), 1 (SELL), 2 (HOLD) ??? 
-            # NÃO! Olhando train_rf_model em ml_signals.py:
-            # y = np.array([0] * 500 + [1] * 500 + [2] * 500) -> 0=Buy, 1=Sell, 2=Hold
-            # Mas espera, predict_proba retorna vetor de probs para cada classe.
-            
-            # Vamos assumir classes [0, 1, 2] -> [BUY, SELL, HOLD]
-            # prob[0] -> Buy
-            # prob[1] -> Sell
-            # prob[2] -> Hold
-            
-            prob_buy = prob[0]
+            # prob[0]=BUY, prob[1]=SELL, prob[2]=HOLD
+            prob_buy  = prob[0]
             prob_sell = prob[1]
             prob_hold = prob[2] if len(prob) > 2 else 0.0
             
-            if prob_buy > 0.6 and prob_buy > prob_sell and prob_buy > prob_hold:
+            # FIX: Maioria simples (sem threshold fixo de 0.6 que nunca era atingido)
+            # Exige apenas que a classe seja a maior E tenha >38% (descarta empates)
+            MIN_CONF = 0.38
+            if prob_buy > prob_sell and prob_buy > prob_hold and prob_buy > MIN_CONF:
                 signal = "BUY"
                 confidence = prob_buy
-            elif prob_sell > 0.6 and prob_sell > prob_buy and prob_sell > prob_hold:
+            elif prob_sell > prob_buy and prob_sell > prob_hold and prob_sell > MIN_CONF:
                 signal = "SELL"
                 confidence = prob_sell
             else:
                 signal = "NEUTRAL"
                 confidence = prob_hold
                 
+            logger.info(
+                f"   ↳ ML RF: {signal} | P(buy)={prob_buy:.2f} P(sell)={prob_sell:.2f} P(hold)={prob_hold:.2f}"
+            )
             return {
                 "probability": confidence,
                 "signal": signal,
@@ -236,4 +231,69 @@ class MLPredictor:
             
         except Exception as e:
             logger.error(f"Erro na inferência: {e}")
-            return {"probability": 0.5, "signal": "NEUTRAL", "reason": "inference_error"}
+            return self._technical_fallback(current_data)
+
+    def _technical_fallback(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Fallback técnico baseado em EMA crossover + RSI + ADX.
+        Evita que o bot fique preso em NEUTRAL 0.5 quando o RF não está disponível.
+        """
+        try:
+            if df is None or df.empty or len(df) < 30:
+                return {"probability": 0.5, "signal": "NEUTRAL", "reason": "insufficient_data"}
+            
+            indicators = self.compute_indicators(df)
+            if not indicators:
+                return {"probability": 0.5, "signal": "NEUTRAL", "reason": "no_indicators"}
+            
+            ema_diff   = indicators.get("ema_diff", 0.0)     # EMA9 vs EMA21
+            rsi        = indicators.get("rsi", 50.0)
+            adx        = indicators.get("adx", 0.0)
+            momentum   = indicators.get("momentum", 0.0)
+            vol_ratio  = indicators.get("volume_ratio", 1.0)
+            
+            score = 0.0  # -1 (forte sell) a +1 (forte buy)
+            
+            # EMA crossover — sinal primário
+            if ema_diff > 0.002:    score += 0.40
+            elif ema_diff < -0.002: score -= 0.40
+            
+            # RSI — confirma ou filtra sinal
+            if rsi < 35:            score += 0.25   # sobrevenda → bull
+            elif rsi > 65:          score -= 0.25   # sobrecompra → bear
+            elif 45 <= rsi <= 55:   pass            # neutro
+            
+            # Momentum
+            if momentum > 0.01:     score += 0.20
+            elif momentum < -0.01:  score -= 0.20
+            
+            # ADX confirma tendência
+            adx_factor = min(adx / 40.0, 1.0)  # 0=sem tendência, 1=tendência forte
+            score *= (0.5 + 0.5 * adx_factor)  # Diminui score se ADX baixo
+            
+            # Volume confirma (sinal fraco sem volume)
+            if vol_ratio < 0.7:     score *= 0.7
+            
+            score = max(-1.0, min(1.0, score))
+            
+            # Converte score para sinal e probabilidade
+            THRESHOLD = 0.25  # Score mínimo para agir
+            if score >= THRESHOLD:
+                signal = "BUY"
+                probability = 0.50 + (score * 0.30)  # mapeia 0.25→0.575, 1.0→0.80
+            elif score <= -THRESHOLD:
+                signal = "SELL"
+                probability = 0.50 + (abs(score) * 0.30)
+            else:
+                signal = "NEUTRAL"
+                probability = 0.50
+            
+            logger.info(
+                f"   ↳ ML Fallback Técnico: {signal} | score={score:.3f} "
+                f"(EMA:{ema_diff:.4f} RSI:{rsi:.0f} ADX:{adx:.0f} mom:{momentum:.3f})"
+            )
+            return {"probability": probability, "signal": signal, "reason": "technical_fallback"}
+            
+        except Exception as e:
+            logger.error(f"Erro no fallback técnico: {e}")
+            return {"probability": 0.5, "signal": "NEUTRAL", "reason": "fallback_error"}

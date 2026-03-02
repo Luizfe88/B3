@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import pandas as pd
 from logging.handlers import TimedRotatingFileHandler
+from trailing_stop import calculate_dynamic_stop, TrailingStopConfig
 
 # Configuração de logs com rotação a cada 3 horas
 log_formatter = logging.Formatter(
@@ -466,6 +467,74 @@ def main():
 
             # Gerenciamento de posições abertas
             position_manager.update_stops()
+
+            # --- FIX 7: Trailing Stop Dinâmico (5 níveis via ATR) ---
+            try:
+                ts_config = TrailingStopConfig()
+                open_positions_ts = position_manager.get_open_positions()
+                for p in open_positions_ts:
+                    try:
+                        p_sym = p.get("symbol", "")
+                        p_type = p.get("type", "BUY")
+                        entry_price = p.get("entry_price", 0.0) or p.get("price_open", 0.0)
+                        current_sl  = p.get("sl", 0.0)
+                        cur_price   = p.get("current_price", 0.0) or p.get("price_current", 0.0)
+                        ticket      = p.get("ticket", None)
+
+                        if not p_sym or not ticket or entry_price <= 0:
+                            continue
+
+                        # ATR via candles do símbolo
+                        ts_candles = utils.safe_copy_rates(p_sym, mt5.TIMEFRAME_M15, 30)
+                        if ts_candles is None or ts_candles.empty:
+                            continue
+                        
+                        ind_ts = utils.quick_indicators_custom(p_sym, mt5.TIMEFRAME_M15, df=ts_candles)
+                        atr = ind_ts.get("atr", 0.0) if ind_ts else 0.0
+                        adx = ind_ts.get("adx", 0.0) if ind_ts else 0.0
+
+                        if atr <= 0:
+                            continue
+
+                        # max_price: extensão máxima em favor da posição
+                        if p_type == "BUY":
+                            max_price = p.get("price_max", cur_price) or cur_price
+                            position_side = 1
+                        else:  # SELL
+                            max_price = p.get("price_min", cur_price) or cur_price
+                            position_side = -1
+
+                        last_candle = ts_candles.iloc[-1]
+
+                        new_sl, ts_reason = calculate_dynamic_stop(
+                            current_price=cur_price,
+                            entry_price=entry_price,
+                            current_stop_price=current_sl,
+                            max_price_reached=max_price,
+                            atr=atr,
+                            position_side=position_side,
+                            config=ts_config,
+                            candle_low=float(last_candle["low"]),
+                            candle_high=float(last_candle["high"]),
+                            adx=adx,
+                        )
+
+                        # Só move SL se melhorou (protege lucro — nunca piora)
+                        sl_improved = (
+                            (position_side == 1  and new_sl > current_sl) or
+                            (position_side == -1 and new_sl < current_sl and new_sl > 0)
+                        )
+                        if sl_improved and ts_reason != "HOLD" and ts_reason != "ATR_ZERO":
+                            logger.info(
+                                f"🔒 Trailing Stop {p_sym} [{ts_reason}]: SL {current_sl:.4f} → {new_sl:.4f}"
+                            )
+                            execution.modify_sl(ticket, new_sl)
+
+                    except Exception as ts_err:
+                        logger.debug(f"⚠️ Trailing stop erro em {p.get('symbol','?')}: {ts_err}")
+
+            except Exception as ts_outer_err:
+                logger.error(f"❌ Erro no loop de trailing stop: {ts_outer_err}")
 
             # Verifica e loga trades fechados (histórico recente)
             utils.check_and_log_closed_trades()

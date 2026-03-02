@@ -11,48 +11,112 @@ class Analyst:
 
 class FundamentalAnalyst(Analyst):
     def analyze(self, symbol: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        # Tenta obter dados reais do fetcher global (utils.py)
+        """
+        FIX: usa métricas MT5 reais (avg_tick_volume, atr_pct, bars)
+        em vez de market_cap que MT5 nunca retorna (sempre 0 → score sempre 0.40).
+        FIX2: quando MT5 retorna bars=0 (sem conexão), retorna NEUTRO em vez de
+        penalizar 3x gerando score 0.25 'expensive' (bear falso por conectividade).
+        """
         import utils
         
-        logger.info(f"🔎 [Fundamental] Analisando balanços de {symbol}...")
+        logger.info(f"🔎 [Fundamental] Analisando métricas de liquidez/vol de {symbol}...")
         
-        # Valores padrão
         valuation = "neutral"
-        score = 0.5
+        score = 0.50  # base neutra
         risks = []
         drivers = []
+        fund = {}
         
         try:
             fund = utils.fundamental_fetcher.get_fundamentals(symbol)
-            mcap = fund.get("market_cap", 0)
-            sector = fund.get("sector", "Outros")
+            avg_vol = fund.get("mt5_avg_tick_volume", 0.0)
+            atr_pct = fund.get("mt5_atr_pct", 0.0)
+            bars    = fund.get("mt5_bars", 0)
             
-            # Lógica simples baseada em Market Cap (Blue Chips vs Small Caps)
-            # Em um sistema real, usaria P/L, ROE, Dívida Líquida/EBITDA
-            if mcap > 100_000_000_000: # > 100B (Blue Chip)
-                score = 0.7
-                valuation = "fair"
+            # --- CRITICO: Sem dados MT5 → retorna NEUTRO, nunca penaliza ---
+            # Falha de conectividade/símbolo não selecionado NÃO é sinal bearish!
+            # Antes: bars=0 → penalizava 3x → score 0.25 → 'expensive' → bear+1.0 (falso!)
+            if bars <= 0:
+                logger.info(f"   ↳ Sem dados MT5 para {symbol} (bars=0) → Neutro por default")
+                return {
+                    "type": "fundamental",
+                    "score": 0.50,
+                    "valuation": "neutral",
+                    "risks": ["no_mt5_data"],
+                    "drivers": [],
+                    "details": fund
+                }
+            
+            # --- Liquidez (tick volume médio diário — escala B3 dia: 10-10000) ---
+            # Blue chips (PETR4, VALE3, ITUB4): avg_vol >> 2000
+            # Mid caps: 300-2000 | Small caps: < 300
+            if avg_vol > 2000:
+                score += 0.15
                 drivers.append("high_liquidity")
-            elif mcap > 20_000_000_000: # > 20B
-                score = 0.6
-                valuation = "neutral"
+            elif avg_vol > 300:
+                score += 0.07
+                drivers.append("moderate_liquidity")
+            elif avg_vol > 50:
+                pass   # liquidez mínima aceitável → sem ajuste
             else:
-                score = 0.4
-                valuation = "undervalued" # ou risky
+                score -= 0.08   # penalidade reduzida (antes -0.10)
                 risks.append("low_liquidity")
-                
-            # Ajuste por setor (Exemplo)
-            if sector == "Bancos":
-                score += 0.1 # Bancos costumam ser sólidos
-                drivers.append("sector_resilience")
-            elif sector == "Varejo":
-                score -= 0.1 # Varejo sofre com juros
-                risks.append("macro_headwinds")
-                
-            score = max(0.1, min(0.9, score))
+            
+            # --- Volatilidade (ATR% = (H-L)/Close médio diário) ---
+            # B3 típico: 0.010 a 0.030 (1-3% ao dia)
+            if atr_pct > 0.030:    # > 3%
+                score += 0.05
+                drivers.append("high_volatility")
+            elif atr_pct > 0.008:  # > 0.8% → normal para B3
+                score += 0.08
+                drivers.append("healthy_volatility")
+            elif atr_pct > 0.002:  # > 0.2% → aceitável
+                pass               # sem ajuste (antes penalizava isso — errado)
+            else:
+                score -= 0.08
+                risks.append("low_volatility")
+            
+            # --- Histórico disponível ---
+            if bars >= 200:
+                score += 0.05
+                drivers.append("solid_history")
+            elif bars < 30:
+                score -= 0.05  # penalidade leve (antes -0.10, agressivo demais)
+                risks.append("short_history")
+            
+            # --- Contexto setorial via config ---
+            import config as cfg
+            sector = cfg.SECTOR_MAP.get(symbol, "OUTROS")
+            if sector in ("FINANCEIRO", "PETROLEO", "MINERACAO", "UTILIDADE_PUBLICA"):
+                score += 0.05
+                drivers.append("resilient_sector")
+            elif sector in ("VAREJO", "EDUCACAO"):
+                score -= 0.03   # penalidade reduzida (antes -0.05)
+                risks.append("rate_sensitive_sector")
+            
+            score = max(0.15, min(0.90, score))
             
         except Exception as e:
             logger.warning(f"Erro na análise fundamentalista: {e}")
+            return {
+                "type": "fundamental",
+                "score": 0.50,
+                "valuation": "neutral",
+                "risks": ["analysis_error"],
+                "drivers": [],
+                "details": fund
+            }
+        
+        # --- Mapeamento semântico do score ---
+        # 'fair' agora a partir de 0.52 (antes 0.55 — restritivo demais)
+        if score >= 0.65:
+            valuation = "cheap"       # forte → bullish
+        elif score >= 0.52:
+            valuation = "fair"        # levemente positivo
+        elif score >= 0.40:
+            valuation = "neutral"
+        else:
+            valuation = "expensive"   # sinal negativo real (não por falta de dados)
         
         result = {
             "type": "fundamental",
@@ -60,38 +124,46 @@ class FundamentalAnalyst(Analyst):
             "valuation": valuation,
             "risks": risks,
             "drivers": drivers,
-            "details": fund if 'fund' in locals() else {}
+            "details": fund
         }
-        logger.info(f"   ↳ Valuation: {valuation} | Score: {score:.2f}")
+        logger.info(f"   ↳ Valuation: {valuation} | Score: {score:.2f} | Drivers: {drivers} | Risks: {risks}")
         return result
 
 class SentimentAnalyst(Analyst):
     def analyze(self, symbol: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        # Simula análise de redes sociais/notícias com alguma variação randômica
-        # para não parecer estático, mas idealmente conectaria a uma API
-        import random
+        """
+        FIX: usa ibov_trend real do market_data em vez de random.uniform.
+        Random é ruído puro — não contribui para sinal algum.
+        """
+        logger.info(f"🐦 [Sentiment] Avaliando sentimento de mercado para {symbol}...")
         
-        logger.info(f"🐦 [Sentiment] Escaneando Twitter/News para {symbol}...")
+        # Mapa de tendência do IBOV → score de sentimento
+        ibov_trend = data.get("ibov_trend", "neutral")
+        trend_to_score = {
+            "bullish":        0.72,
+            "neutral":        0.52,
+            "bearish":        0.32,
+            "bearish_extreme": 0.18,
+        }
+        score = trend_to_score.get(ibov_trend, 0.52)
         
-        # Gera um score base levemente otimista (mercado tende a subir no longo prazo)
-        # Variação aleatória para simular fluxo de notícias
-        base_score = 0.55 
-        noise = random.uniform(-0.1, 0.1)
-        score = base_score + noise
+        # Pequeno ajuste se IBOV está em alta e o ativo tem alta correlação setorial
+        # (heurística simples — melhora quando tivermos dados de correlação)
         
         sentiment = "neutral"
-        if score > 0.6:
+        if score >= 0.65:
             sentiment = "optimistic"
-        elif score < 0.4:
+        elif score < 0.40:
             sentiment = "pessimistic"
         
         result = {
             "type": "sentiment",
             "score": score,
             "sentiment": sentiment,
-            "sources": ["twitter_br", "valor_economico"]
+            "sources": ["ibov_trend"],
+            "ibov_trend_used": ibov_trend
         }
-        logger.info(f"   ↳ Sentiment: {sentiment} | Score: {score:.2f}")
+        logger.info(f"   ↳ Sentiment: {sentiment} | Score: {score:.2f} | IBOV: {ibov_trend}")
         return result
 
 class TechnicalAnalyst(Analyst):

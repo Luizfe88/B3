@@ -478,8 +478,8 @@ CORR_UPDATE_INTERVAL = 3600  # 1 hora
 # Horários de fechamento e bloqueio de entradas
 NO_ENTRY_AFTER = "16:15"
 CLOSE_ALL_BY = "16:45"
-FRIDAY_NO_ENTRY_AFTER = "15:15"
-FRIDAY_CLOSE_ALL_BY = "15:45"
+FRIDAY_NO_ENTRY_AFTER = "16:15"  # FIX: era 15:15, liberado +1h para sextas
+FRIDAY_CLOSE_ALL_BY = "16:45"
 DAILY_RESET_TIME = "10:00"  # Reset diário do circuit breaker
 
 # Modo de operação
