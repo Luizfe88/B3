@@ -67,27 +67,20 @@ class FundamentalFetcher:
                     return data
 
         mt5_symbol = symbol.replace(".SA", "") if symbol.endswith(".SA") else symbol
-        try:
-            path = getattr(config, "MT5_TERMINAL_PATH", None)
-            if path:
-                mt5.initialize(path=path)
-            else:
-                mt5.initialize()
-        except Exception:
-            pass
+        
+        # Fallback dictionary for no data
+        empty_data = {"mt5_bars": 0, "mt5_avg_tick_volume": 0.0, "mt5_atr_pct": 0.0}
 
         try:
-            try:
-                mt5.symbol_select(mt5_symbol, True)
-            except Exception:
-                pass
-            rates = mt5.copy_rates_from_pos(mt5_symbol, mt5.TIMEFRAME_D1, 0, 300)
-            if rates is None or (hasattr(rates, "__len__") and len(rates) == 0):
-                data = {"mt5_bars": 0, "mt5_avg_tick_volume": 0.0, "mt5_atr_pct": 0.0}
+            # Usa H1 invés de D1 pois o cache local na B3 atualiza H1/M15 muito mais rapido, e
+            # a função safe garante retry e delay backoff pra carregar de verdade os dados sem retornar None
+            df = utils.safe_copy_rates(mt5_symbol, mt5.TIMEFRAME_H1, 200)
+            
+            if df is None or df.empty or len(df) < 5:
+                # Log isolado para rastreio
+                logger.warning(f"⚠️ {mt5_symbol}: Sem dados MT5 (bars=0) apos safe_copy_rates")
+                data = empty_data
             else:
-                df = pd.DataFrame(rates)
-                df["time"] = pd.to_datetime(df["time"], unit="s")
-                df.set_index("time", inplace=True)
                 avg_vol = (
                     float(df["tick_volume"].mean())
                     if "tick_volume" in df.columns
@@ -99,16 +92,12 @@ class FundamentalFetcher:
                     else 0.0
                 )
                 close_mean = df["close"].mean() if "close" in df.columns else 0.0
-                atr_pct = float(hl_range / close_mean) if close_mean else 0.0
+                atr_pct = float(hl_range / close_mean) if close_mean > 0 else 0.0
                 data = {
                     "mt5_bars": int(len(df)),
                     "mt5_avg_tick_volume": avg_vol,
                     "mt5_atr_pct": atr_pct,
                 }
-            try:
-                mt5.shutdown()
-            except Exception:
-                pass
 
             self.cache[cache_key] = {
                 "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
@@ -116,13 +105,10 @@ class FundamentalFetcher:
             }
             self._save_cache()
             return data
+            
         except Exception as e:
             logger.error(f"Erro ao coletar métricas MT5 para {mt5_symbol}: {e}")
-            try:
-                mt5.shutdown()
-            except Exception:
-                pass
-            return {"mt5_bars": 0, "mt5_avg_tick_volume": 0.0, "mt5_atr_pct": 0.0}
+            return empty_data
 
     def check_tradeability(self, symbol: str) -> Tuple[bool, str]:
         data = self.get_fundamentals(symbol)

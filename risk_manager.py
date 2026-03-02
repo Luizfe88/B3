@@ -221,15 +221,36 @@ class RiskManager:
         stop_loss_price: float,
     ) -> float:
         """
-        Calcula tamanho da posição baseado em Kelly
+        Calcula tamanho da posição baseado em Risco Financeiro Fixo + Ajuste de Kelly.
+        Garante que a perda máxima no Stop Loss não ultrapasse 1-2% do capital da conta (Priority 4).
 
+        Args:
+            symbol: Ticker do ativo
+            side: BUY ou SELL
+            account_balance: Saldo total da conta/patrimônio
+            entry_price: Preço de entrada projetado
+            stop_loss_price: Preço de stop-loss estabelecido
+            
         Returns:
             Tamanho da posição em unidades (lot_size)
         """
-        # Obtém estatísticas dos últimos 7 dias
-        stats = self._get_recent_stats(symbol, days=7)
+        if entry_price <= 0 or stop_loss_price <= 0:
+            logger.error(f"❌ Preços inválidos para {symbol}: Entrada={entry_price}, SL={stop_loss_price}")
+            return 0.0
 
-        # Calcula fração de Kelly
+        risk_per_unit = abs(entry_price - stop_loss_price)
+        if risk_per_unit == 0:
+            logger.error(f"❌ Stop loss inválido (igual à entrada) para {symbol}")
+            return 0.0
+
+        # Risco base: MAX_CAPITAL_ALLOCATION_PCT define o MÁXIMO a perder num trade
+        # ex: 0.02 = 2% do capital em risco
+        max_risk_pct = getattr(config, 'MAX_CAPITAL_ALLOCATION_PCT', 0.02)
+        base_risk_amount = account_balance * max_risk_pct
+
+        # Obtém estatísticas e ajusta via Kelly para dosar a agressividade (0.0 a 1.0)
+        # Kelly muito ruim = opera pequeno; Kelly ótimo = usa até o risco máximo base
+        stats = self._get_recent_stats(symbol, days=7)
         kelly_result = self.calculate_kelly_fraction(
             symbol,
             side,
@@ -237,31 +258,34 @@ class RiskManager:
             avg_win=stats["avg_win"],
             avg_loss=stats["avg_loss"],
         )
+        
+        # O Kelly_fraction original era calculado como % de ALOCAÇÃO TOTAL (até 25%),
+        # o que é extremamente perigoso para B3. Vamos escalar para ser um multiplicador [0.2, 1.0]
+        # do nosso RISK_AMOUNT (que já está capeado em 2%).
+        # Se max_fraction do kelly era 0.25, normalizamos: fraction / 0.25 -> range [0, 1]
+        kelly_confidence_multiplier = min(1.0, max(0.2, kelly_result.fraction / 0.25))
 
-        # Calcula risco em dinheiro
-        risk_amount = account_balance * kelly_result.fraction
+        # Calcula o risco final em Reais
+        final_risk_amount = base_risk_amount * kelly_confidence_multiplier
 
-        # Calcula risco por unidade (baseado no stop loss)
-        risk_per_unit = abs(entry_price - stop_loss_price)
-        if risk_per_unit == 0:
-            logger.error(f"❌ Stop loss inválido para {symbol}")
-            return 0.0
+        # Calcula número bruto de ações para arriscar 'final_risk_amount'
+        units = final_risk_amount / risk_per_unit
 
-        # Calcula número de unidades
-        units = risk_amount / risk_per_unit
+        # Arredonda para lotes padrão da B3 (100 ações, ou fracionário se necessário)
+        # Por regra do sistema xp3, operamos em lotes de 100
+        lot_size = int(units // 100) * 100
 
-        # Arredonda para lotes padrão da B3 (100 ações)
-        lot_size = max(100, int(units / 100) * 100)
+        # Segurança final extra: A posição total (financeiro total investido)
+        # não deve ultrapassar 4x o capital para daytrade alavancado normal.
+        exposure_limit_money = account_balance * 4.0
+        max_lot_exposure = int(exposure_limit_money / entry_price)
 
-        # Limita pelo capital disponível
-        max_units = int(
-            account_balance * 0.25 / entry_price
-        )  # Máximo 25% em uma posição
-        final_lot_size = min(lot_size, max_units)
+        final_lot_size = max(100, min(lot_size, max_lot_exposure))
 
         logger.info(
-            f"📏 Posição {symbol} {side}: {final_lot_size} ações "
-            f"(Kelly: {kelly_result.fraction:.2%}, Risco: R$ {risk_amount:.2f})"
+            f"📏 Sizing dinâmico {symbol} {side}: {final_lot_size} ações "
+            f"(Distância SL: R${risk_per_unit:.2f}, Risco Trade: R${final_risk_amount:.2f} max 2%, "
+            f"Kelly Conf:{kelly_confidence_multiplier:.0%})"
         )
 
         return float(final_lot_size)

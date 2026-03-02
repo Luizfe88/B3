@@ -56,22 +56,22 @@ try:
     from agents.researcher_team import ResearcherTeam
     rt = ResearcherTeam()
 
-    # So tecnico bullish (score 1.5) deve superar threshold 1.0
+    # So tecnico bullish forte (score 0.90 -> conf_esc: ~1.09) passa de 0.8
     r_tech_only = rt.debate('PETR4', {
-        'technical':   {'trend': 'bullish'},
-        'fundamental': {'valuation': 'neutral'},
-        'sentiment':   {'sentiment': 'neutral'},
-        'orderflow':   {'pressure': 'neutral'}
+        'technical':   {'trend': 'bullish', 'score': 0.90},
+        'fundamental': {'valuation': 'neutral', 'score': 0.50},
+        'sentiment':   {'sentiment': 'neutral', 'score': 0.50},
+        'orderflow':   {'pressure': 'neutral', 'imbalance': 0.0}
     })
     print(f"So tecnico: {r_tech_only['consensus']} (bull={r_tech_only['bull_score']:.1f} bear={r_tech_only['bear_score']:.1f})")
-    assert r_tech_only['consensus'] == 'BULLISH', f"Tecnico 1.5 > threshold 1.0 -> deve ser BULLISH! Got: {r_tech_only['consensus']}"
+    assert r_tech_only['consensus'] == 'BULLISH', f"Tecnico forte > threshold 0.8 -> deve ser BULLISH! Got: {r_tech_only['consensus']}"
 
     # Full bullish: tecnico + fundamental cheap + sentimento + orderflow
     r_full = rt.debate('PETR4', {
-        'technical':   {'trend': 'bullish'},
-        'fundamental': {'valuation': 'cheap'},
-        'sentiment':   {'sentiment': 'optimistic'},
-        'orderflow':   {'pressure': 'bullish'}
+        'technical':   {'trend': 'bullish', 'score': 0.80},
+        'fundamental': {'valuation': 'cheap', 'score': 0.70},
+        'sentiment':   {'sentiment': 'optimistic', 'score': 0.70},
+        'orderflow':   {'pressure': 'bullish', 'imbalance': 0.20}
     })
     print(f"Full bullish: {r_full['consensus']} (conf={r_full['confidence']:.2f} bull={r_full['bull_score']:.1f})")
     assert r_full['consensus'] == 'BULLISH'
@@ -79,10 +79,10 @@ try:
 
     # Cenario neutro deve permanecer NEUTRAL
     r_neutral = rt.debate('PETR4', {
-        'technical':   {'trend': 'neutral'},
-        'fundamental': {'valuation': 'neutral'},
-        'sentiment':   {'sentiment': 'neutral'},
-        'orderflow':   {'pressure': 'neutral'}
+        'technical':   {'trend': 'neutral', 'score': 0.50},
+        'fundamental': {'valuation': 'neutral', 'score': 0.50},
+        'sentiment':   {'sentiment': 'neutral', 'score': 0.50},
+        'orderflow':   {'pressure': 'neutral', 'imbalance': 0.0}
     })
     print(f"Neutro: {r_neutral['consensus']}")
     assert r_neutral['consensus'] == 'NEUTRAL'
@@ -103,7 +103,7 @@ try:
         'technical':   {'trend': 'bullish', 'score': 0.70},
         'fundamental': {'valuation': 'fair', 'score': 0.60},
         'sentiment':   {'sentiment': 'optimistic', 'score': 0.72},
-        'orderflow':   {'pressure': 'neutral'}
+        'orderflow':   {'pressure': 'neutral', 'imbalance': 0.0}
     }
     debate_bull = {'consensus': 'BULLISH', 'confidence': 0.75}
     proposals = tt.collect_proposals('PETR4', analysis_bull, debate_bull)
@@ -148,25 +148,21 @@ try:
     pred.rf_model = None
     pred.scaler = None
 
-    # Cria um DataFrame simulado com tendencia de alta
     n = 50
-    close = pd.Series(np.linspace(10.0, 12.0, n))  # tendencia de alta
+    close = pd.Series(np.linspace(10.0, 12.0, n))
     high  = close * 1.01
     low   = close * 0.99
     vol   = pd.Series([1000.0] * n)
-
     df_bull = pd.DataFrame({'close': close, 'high': high, 'low': low, 'tick_volume': vol})
     result_bull = pred._technical_fallback(df_bull)
     print(f"Fallback (tendencia alta): {result_bull['signal']} prob={result_bull['probability']:.3f}")
     assert result_bull['signal'] in ('BUY', 'NEUTRAL'), f"Esperado BUY ou NEUTRAL, got {result_bull['signal']}"
 
-    # Tendencia de baixa
     close_bear = pd.Series(np.linspace(12.0, 10.0, n))
     df_bear = pd.DataFrame({'close': close_bear, 'high': close_bear*1.01, 'low': close_bear*0.99, 'tick_volume': vol})
     result_bear = pred._technical_fallback(df_bear)
     print(f"Fallback (tendencia baixa): {result_bear['signal']} prob={result_bear['probability']:.3f}")
     assert result_bear['signal'] in ('SELL', 'NEUTRAL'), f"Bear trend -> esperado SELL ou NEUTRAL, got {result_bear['signal']}"
-
     print("PASS - Fallback tecnico funciona sem RF model")
 except Exception as e:
     print(f"FAIL: {e}")

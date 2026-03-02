@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import pandas as pd
 from logging.handlers import TimedRotatingFileHandler
 from trailing_stop import calculate_dynamic_stop, TrailingStopConfig
+from opportunity_ranker import opportunity_ranker
 
 # Configuração de logs com rotação a cada 3 horas
 log_formatter = logging.Formatter(
@@ -173,6 +174,14 @@ def main():
                 time.sleep(60)
                 continue
 
+            opportunities = [] # Array para acumular scans
+
+            # 1. Atualiza trailing stops das posições existentes ANTES de abrir novas
+            position_manager.update_stops()
+
+            # Obtém lista de ativos (Apenas os válidos)
+            symbols = valid_symbols
+
             for symbol in symbols:
                 try:
                     # 1. Coleta dados de mercado (Market Data)
@@ -270,14 +279,43 @@ def main():
                     # 2. Decisão do Fund Manager (Agentes)
                     decision = fund_manager.decide(symbol, market_data)
 
-                    # 3. Execução
-                    # Verifica account info para gestão de risco e lote
-                    account_info = mt5.account_info()
-                    if account_info:
-                        equity = account_info.equity
-                    else:
-                        equity = 1000.0  # Fallback
+                    # Se aprovado, armazena para a Fase 2 (Ranking Global)
+                    if decision["action"] in ["BUY", "SELL"]:
+                        # Para compatibilidade do código legado (se invertendo mão etc), 
+                        # podemos salvar o symbol_data local caso usemos.
+                        opportunities.append((symbol, decision))
+                        logger.info(f"🔎 [SCAN] {symbol} marcou possível {decision['action']}. Aguardando Ranking...")
+                
+                except Exception as e:
+                    logger.error(f"❌ Erro ao analisar {symbol}: {e}")
+                    import traceback
+                    traceback.print_exc()
 
+            # =======================================================
+            # 💡 FASE 2: RANK E EXECUÇÃO (Global Context)
+            # =======================================================
+            if opportunities:
+                logger.info(f"🏆 Avaliando {len(opportunities)} oportunidades detectadas neste ciclo.")
+                
+                # Rankeia baseado no Conviction Score
+                ranked_opportunities = opportunity_ranker.rank_opportunities(opportunities)
+                
+                # Executa apenas as Top N melhores, baseado no limite dinâmico de conexões/novas trades
+                open_positions_post_scan = position_manager.get_open_positions()
+                slots_livres = config.MAX_CONCURRENT_POSITIONS - len(open_positions_post_scan)
+                max_new = getattr(config, "MAX_NEW_POSITIONS_PER_HOUR", 4)
+                vagas_reais = min(slots_livres, max_new)
+
+                logger.info(f"📈 Limite de ação neste ciclo: top {vagas_reais} operações.")
+
+                for rank_idx, (symbol, decision) in enumerate(ranked_opportunities):
+                    if rank_idx >= vagas_reais:
+                        logger.info(f"✂️ {symbol} ignorado (Ranking #{rank_idx+1} fora do limite top {vagas_reais}).")
+                        continue
+
+                    logger.info(f"🚀 Iniciando execução rankeada #{rank_idx+1}: {symbol} -> {decision['action']}")
+                    
+                    # 3. Execução Final
                     if decision["action"] == "BUY":
                         # Valida se já tem posição
                         open_positions = position_manager.get_open_positions()
@@ -456,14 +494,6 @@ def main():
                             f"⏳ Aguardando confirmação de {symbol} no MT5 (1.5s)..."
                         )
                         time.sleep(1.5)  # Dá tempo para o MT5 registrar a posição
-
-                    elif decision["action"] == "HOLD":
-                        logger.info(
-                            f"⏸️ {symbol}: HOLD - Motivo: {decision.get('reason', 'N/A')}"
-                        )
-
-                except Exception as e:
-                    logger.error(f"❌ Erro no loop para {symbol}: {e}")
 
             # Gerenciamento de posições abertas
             position_manager.update_stops()
