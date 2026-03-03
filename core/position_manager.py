@@ -85,12 +85,99 @@ class PositionManager:
 
     def update_stops(self):
         """
-        Atualiza SL/TP dinamicamente (Trailing Stop).
+        Atualiza SL/TP dinamicamente utilizando a engine centralizada TrailingStopConfig (5 Níveis).
+        Inclui travamento inteligente e Circuit Breaker para não devolver lucro.
         """
+        from trailing_stop import calculate_dynamic_stop, TrailingStopConfig
+        import mt5  # Garantir acesso ao timeframe e symbols
+        
         positions = self.get_open_positions()
-        for p in positions:
-            # Chama a função de trailing do utils (que já tem a lógica de ATR)
-            utils.manage_dynamic_trailing(p["symbol"], p["ticket"])
+        if not positions:
+            return
+            
+        try:
+            ts_config = TrailingStopConfig()
+            for p in positions:
+                try:
+                    p_sym = p.get("symbol", "")
+                    p_type = p.get("type", "BUY")
+                    entry_price = p.get("entry_price", 0.0) or p.get("price_open", 0.0)
+                    current_sl  = p.get("sl", 0.0)
+                    cur_price   = p.get("current_price", 0.0) or p.get("price_current", 0.0)
+                    ticket      = p.get("ticket", None)
+
+                    if not p_sym or not ticket or entry_price <= 0:
+                        continue
+
+                    # ATR via candles do símbolo (M15)
+                    ts_candles = utils.safe_copy_rates(p_sym, utils.TIMEFRAME_BASE, 30)
+                    if ts_candles is None or ts_candles.empty:
+                        continue
+                    
+                    ind_ts = utils.quick_indicators_custom(p_sym, utils.TIMEFRAME_BASE, df=ts_candles)
+                    atr = ind_ts.get("atr", 0.0) if ind_ts else 0.0
+                    adx = ind_ts.get("adx", 0.0) if ind_ts else 0.0
+
+                    if atr <= 0:
+                        continue
+
+                    # max_price: extensão máxima em favor da posição
+                    if p_type == "BUY":
+                        max_price = p.get("price_max", cur_price) or cur_price
+                        position_side = 1
+                    else:  # SELL
+                        max_price = p.get("price_min", cur_price) or cur_price
+                        position_side = -1
+
+                    last_candle = ts_candles.iloc[-1]
+
+                    new_sl, ts_reason = calculate_dynamic_stop(
+                        current_price=cur_price,
+                        entry_price=entry_price,
+                        current_stop_price=current_sl,
+                        max_price_reached=max_price,
+                        atr=atr,
+                        position_side=position_side,
+                        config=ts_config,
+                        candle_low=float(last_candle["low"]),
+                        candle_high=float(last_candle["high"]),
+                        adx=adx,
+                    )
+
+                    # Só move SL se melhorou (protege lucro — nunca piora)
+                    sl_improved = (
+                        (position_side == 1  and new_sl > current_sl) or
+                        (position_side == -1 and new_sl < current_sl and new_sl > 0)
+                    )
+                    if sl_improved and ts_reason != "HOLD" and ts_reason != "ATR_ZERO":
+                        
+                        # Fix Stop Levels Rejection Rule here before submitting
+                        import utils
+                        new_sl, _ = utils.validate_stops_level(p_sym, p_type, cur_price, new_sl, p.get("tp", 0.0))
+                        
+                        logger.info(
+                            f"🔒 Trailing Stop {p_sym} [{ts_reason}]: SL {current_sl:.4f} → {new_sl:.4f}"
+                        )
+                        # Assumindo que execution possua modify_sl, ou precisamos criar se não houver (mas parece haver no código original)
+                        if hasattr(self.execution, "modify_sl"):
+                            self.execution.modify_sl(ticket, new_sl)
+                        else:
+                            # Se não existir modify_sl explícito, enviamos um TRADE_ACTION_SLTP
+                            import MetaTrader5 as mt5_api
+                            req = {
+                                "action": mt5_api.TRADE_ACTION_SLTP,
+                                "position": ticket,
+                                "symbol": p_sym,
+                                "sl": new_sl,
+                                "tp": p.get("tp", 0.0),
+                            }
+                            mt5_api.order_send(req)
+
+                except Exception as ts_err:
+                    logger.debug(f"⚠️ Trailing stop erro em {p.get('symbol','?')}: {ts_err}")
+
+        except Exception as ts_outer_err:
+            logger.error(f"❌ Erro no loop de trailing stop: {ts_outer_err}")
 
     def check_risk_limits(self) -> bool:
         """

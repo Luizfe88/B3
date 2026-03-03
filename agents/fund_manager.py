@@ -61,6 +61,17 @@ class FundManager:
                 "size": 0.0
             }
 
+        # 0.1 Check Daily Loss Block
+        import utils
+        if utils.is_asset_locked_for_day(symbol):
+            logger.warning(f"🚫 [FundManager] {symbol} Bloqueado pelo restante do dia (Trade anterior com prejuízo).")
+            return {
+                "symbol": symbol,
+                "action": "HOLD",
+                "reason": "Daily Loss Block (Prejuizo no dia)",
+                "size": 0.0
+            }
+
         logger.info(f"🏦 [FundManager] Avaliando ativo {symbol}...")
         
         # 1. Analyst Team (Incluindo OrderFlow)

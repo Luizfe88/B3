@@ -239,6 +239,31 @@ class ExecutionEngine:
             logger.info(f"✅ Posição {ticket} fechada com sucesso")
             return True
 
+    def modify_sl(self, ticket: int, new_sl: float) -> bool:
+        """
+        Modifica o Stop Loss de uma posição aberta.
+        """
+        with self._lock:
+            positions = mt5.positions_get(ticket=ticket)
+            if not positions:
+                return False
+            
+            pos = positions[0]
+            request = {
+                "action": mt5.TRADE_ACTION_SLTP,
+                "position": ticket,
+                "symbol": pos.symbol,
+                "sl": float(new_sl),
+                "tp": pos.tp,
+                "magic": pos.magic,
+            }
+            
+            result = mt5.order_send(request)
+            if result.retcode != mt5.TRADE_RETCODE_DONE:
+                logger.error(f"❌ Falha ao modificar SL do ticket {ticket}: {result.comment}")
+                return False
+            return True
+
     def get_positions(self, symbol: Optional[str] = None) -> list:
         with self._lock:
             if symbol:

@@ -6038,6 +6038,45 @@ def check_and_log_closed_trades():
     except Exception as e:
         logger.error(f"Erro ao verificar trades fechados: {e}")
 
+_daily_loss_cache = set()
+_last_loss_check_time = 0.0
+
+def is_asset_locked_for_day(symbol: str) -> bool:
+    """
+    Verifica se o ativo deu prejuízo hoje e deve ser travado.
+    """
+    global _daily_loss_cache, _last_loss_check_time
+    
+    current_time = time.time()
+    # Atualiza cache a cada 60 segundos
+    if current_time - _last_loss_check_time > 60:
+        try:
+            now = datetime.now()
+            # Pega desde a meia noite
+            start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            
+            with mt5_lock:
+                deals = mt5.history_deals_get(start_of_day, now + timedelta(minutes=1))
+                
+            loss_assets = set()
+            if deals:
+                for deal in deals:
+                    # Se foi saída de trade com prejuízo
+                    if (deal.entry == mt5.DEAL_ENTRY_OUT or deal.entry == mt5.DEAL_ENTRY_INOUT) and deal.profit < 0:
+                        loss_assets.add(deal.symbol)
+            
+            _daily_loss_cache = loss_assets
+            _last_loss_check_time = current_time
+            
+            if loss_assets:
+                logger.info(f"🚫 [Daily Blocklist] {len(loss_assets)} ativos travados por prejuízo hoje: {', '.join(list(loss_assets)[:10])}")
+            
+        except Exception as e:
+            logger.error(f"Erro ao atualizar lista de ativos com prejuízo: {e}")
+            _last_loss_check_time = current_time # Evita ficar tentando em loop em caso de erro
+
+    return symbol in _daily_loss_cache
+
 
 # =========================================================
 # 📰 NEWS & EVENTS
