@@ -131,44 +131,12 @@ class ExecutionEngine:
         # ─── Pré-validação: stops_level mínimo do broker (evita Code 10016) ──────
         tick = mt5.symbol_info_tick(order.symbol)
         ref_price = tick.ask if order.side == OrderSide.BUY else tick.bid if tick else 0.0
-        info = mt5.symbol_info(order.symbol)
-        if info and ref_price > 0:
-            stops_level = getattr(info, "trade_stops_level", 0) or 0
-            point       = getattr(info, "point", 0.01) or 0.01
-            tick_size   = getattr(info, "trade_tick_size", point) or point
-            min_dist    = stops_level * point
-            if min_dist > 0:
-                sl, tp = order.sl, order.tp
-                if order.side == OrderSide.BUY:
-                    if sl > 0 and sl > (ref_price - min_dist):
-                        new_sl = round((ref_price - min_dist - tick_size) / tick_size) * tick_size
-                        logger.warning(
-                            f"🛡️ [PRE-SEND] SL BUY muito próximo em {order.symbol}: "
-                            f"{sl:.4f} → {new_sl:.4f} (stops_level={stops_level}, min={min_dist:.4f})"
-                        )
-                        order.sl = new_sl
-                    if tp > 0 and tp < (ref_price + min_dist):
-                        new_tp = round((ref_price + min_dist + tick_size) / tick_size) * tick_size
-                        logger.warning(
-                            f"🛡️ [PRE-SEND] TP BUY muito próximo em {order.symbol}: "
-                            f"{tp:.4f} → {new_tp:.4f}"
-                        )
-                        order.tp = new_tp
-                else:  # SELL
-                    if sl > 0 and sl < (ref_price + min_dist):
-                        new_sl = round((ref_price + min_dist + tick_size) / tick_size) * tick_size
-                        logger.warning(
-                            f"🛡️ [PRE-SEND] SL SELL muito próximo em {order.symbol}: "
-                            f"{sl:.4f} → {new_sl:.4f} (stops_level={stops_level}, min={min_dist:.4f})"
-                        )
-                        order.sl = new_sl
-                    if tp > 0 and tp > (ref_price - min_dist):
-                        new_tp = round((ref_price - min_dist - tick_size) / tick_size) * tick_size
-                        logger.warning(
-                            f"🛡️ [PRE-SEND] TP SELL muito próximo em {order.symbol}: "
-                            f"{tp:.4f} → {new_tp:.4f}"
-                        )
-                        order.tp = new_tp
+        if ref_price > 0:
+            try:
+                import utils
+                order.sl, order.tp = utils.validate_stops_level(order.symbol, order.side.value, ref_price, order.sl, order.tp)
+            except Exception as e:
+                logger.error(f"Erro ao validar stops level para {order.symbol}: {e}")
         # ─────────────────────────────────────────────────────────────────────────
 
         request = {

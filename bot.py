@@ -325,8 +325,9 @@ def main():
                             continue
                         # ────────────────────────────────────────────────────────────────────────────
 
-                        # Valida se já tem posição
-                        open_positions = position_manager.get_open_positions()
+                        # Valida se já tem posição (Hard Block)
+                        open_positions = position_manager.get_open_positions(filter_magic=False)
+                        already_has_buy = False
                         for p in open_positions:
                             if p["symbol"] == symbol:
                                 if p["type"] == "SELL":
@@ -335,10 +336,18 @@ def main():
                                     )
                                     execution.close_position(p["ticket"], symbol)
                                 else:
-                                    logger.info(
-                                        f"⏭️ Posição de COMPRA já existente em {symbol}. Mantendo."
-                                    )
-                                    continue  # Já comprado, não faz nada (poderia aumentar posição)
+                                    already_has_buy = True
+                                    break
+                                    
+                        if already_has_buy:
+                            logger.info(f"⏭️ Posição de COMPRA já existente em {symbol}. Mantendo. Bloqueando nova ordem.")
+                            continue
+
+                        # Verifica ordens pendentes
+                        pending_exposure = position_manager.get_pending_exposure()
+                        if symbol in pending_exposure and pending_exposure[symbol] > 0:
+                            logger.info(f"⏳ Ordem pendente já existe para {symbol}. Ignorando nova entrada.")
+                            continue
 
                         # Cálculo de Lote:
                         # 1. Base: Config do capital (configurável)
@@ -432,8 +441,9 @@ def main():
                             continue
                         # ────────────────────────────────────────────────────────────────────────────
 
-                        # Valida se já tem posição
-                        open_positions = position_manager.get_open_positions()
+                        # Valida se já tem posição (Hard Block)
+                        open_positions = position_manager.get_open_positions(filter_magic=False)
+                        already_has_sell = False
                         for p in open_positions:
                             if p["symbol"] == symbol:
                                 if p["type"] == "BUY":
@@ -442,10 +452,18 @@ def main():
                                     )
                                     execution.close_position(p["ticket"], symbol)
                                 else:
-                                    logger.info(
-                                        f"⏭️ Posição de VENDA já existente em {symbol}. Mantendo."
-                                    )
-                                    continue
+                                    already_has_sell = True
+                                    break
+                                    
+                        if already_has_sell:
+                            logger.info(f"⏭️ Posição de VENDA já existente em {symbol}. Mantendo. Bloqueando nova ordem.")
+                            continue
+
+                        # Verifica ordens pendentes
+                        pending_exposure = position_manager.get_pending_exposure()
+                        if symbol in pending_exposure and pending_exposure[symbol] > 0:
+                            logger.info(f"⏳ Ordem pendente já existe para {symbol}. Ignorando nova entrada.")
+                            continue
 
                         # Cálculo de Lote (Mesma lógica)
                         base_allocation_pct = config.MAX_CAPITAL_ALLOCATION_PCT
