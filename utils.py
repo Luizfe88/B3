@@ -566,69 +566,144 @@ def get_mt5_executor():
     return _mt5_executor
 
 
-def safe_copy_rates(
-    symbol: str, timeframe, count: int = 500, timeout: int = 12
-) -> Optional[pd.DataFrame]:
+# =========================================================
+# 📊 LISTAS OFICIAIS DE ATIVOS
+# =========================================================
+
+ELITE_SYMBOLS = [
+    # Financeiro (12)
+    "ITUB4", "BBDC4", "BBAS3", "B3SA3", "BPAC11", "ITSA4", "SANB11", "BBSE3", "ABCB4", "PINE4", "IRBR3", "PSSA3",
+    # Energia / Petróleo (9)
+    "PETR4", "PRIO3", "VBBR3", "EQTL3", "ENEV3", "NEOE3", "AXIA3", "RECV3", "PETR3",
+    # Materiais Básicos (7)
+    "VALE3", "SUZB3", "GGBR4", "CSNA3", "USIM5", "KLBN11", "AURA33",
+    # Consumo (8)
+    "ABEV3", "JBSS3", "BRFS3", "BEEF3", "CRFB3", "MGLU3", "LREN3", "ASAI3",
+    # Saúde / Varejo / Outros (14)
+    "HAPV3", "RDOR3", "RADL3", "WEGE3", "RENT3", "CCRO3", "VIVT3", "TIMS3", "COGN3", "YDUQ3", "CYRE3", "MRVE3", "MULT3", "IGTI11",
+]
+
+OPORTUNIDADE_SYMBOLS = [
+    "TOTS3", "LWSA3", "DESK3", "AZUL4", "MOVI3", "SLCE3", "RAIZ4", "ONCO3", "QUAL3", "ANIM3", "TEND3", "MDNE3", "SBSP3", "ODPV3",
+    "HYPE3", "CPFE3", "CMIG4", "TAEE11", "ELET3", "ELET6", "CSAN3", "VAMO3", "GMAT3", "ALUP11", "FLRY3", "RENT3", "SULA11", "BOVA11",
+    "SMAL11", "MATB11", "IVVB11", "HASH11", "ALZR11", "KNRI11", "HGLG11", "XPML11", "VISC11", "BRCR11", "HGRE11", "RBRF11", "KNCR11",
+    "MXRF11", "KNHF11", "TGAR11", "IRDM11", "BTCI11", "LVBI11", "HGBS11", "RBRL11", "RBRP11", "KNIP11", "VRTA11", "XPLG11", "PVBI11",
+    "RECT11", "SNCI11", "SNEL11", "SNME11", "TECN3", "SOJA3", "AGRO3", "BRKM5", "UNIP6", "FHER3", "KLBN4", "NUTR3", "TUPY3", "FRAS3",
+    "POMO4", "TASA4", "LEVE3", "SHUL4", "EALT4", "ROMI3", "MWET4", "PTBL3", "ESTC3", "AMAR3", "LAVV3", "CURY3", "EVEN3", "PDGR3", "MRVE3", "TEND3",
+]
+
+STOCK_UNITS_WHITELIST = {
+    "SANB11", "BPAC11", "KLBN11", "IGTI11", "TAEE11", "ALUP11", "SULA11",
+}
+
+# =========================================================
+# 🚀 FUNÇÕES DE ACESSO A DADOS (HARDENED)
+# =========================================================
+
+def ensure_mt5_connected(force: bool = False):
+    """Garante que o MT5 esteja inicializado e conectado com hard reset se necessário"""
     try:
+        if not force:
+            terminal = mt5.terminal_info()
+            if terminal is not None and getattr(terminal, "connected", False):
+                return True
+
+        logger.warning(f"🔄 {'Forçando' if force else 'Detectada'} (re)inicialização do MT5...")
+        mt5.shutdown()
+        time.sleep(1.0)
+        
+        # Usa parâmetros do config para garantir conexão correta
+        # Login precisa ser int
+        account = getattr(config, "MT5_ACCOUNT", 0)
+        try:
+            account = int(account)
+        except (ValueError, TypeError):
+            account = 0
+
+        init_params = {
+            "path": getattr(config, "MT5_TERMINAL_PATH", None),
+            "login": account,
+            "password": getattr(config, "MT5_PASSWORD", ""),
+            "server": getattr(config, "MT5_SERVER", "")
+        }
+        
+        # Filtra parâmetros vazios para permitir fallback do MT5
+        init_params = {k: v for k, v in init_params.items() if v}
+        
+        if not mt5.initialize(**init_params):
+            logger.error(f"❌ Falha crítica ao inicializar MT5: {mt5.last_error()}")
+            return False
+        
+        # Verifica novamente após inicializar
         terminal = mt5.terminal_info()
-    except Exception:
-        terminal = None
-    if (terminal is None) or (not getattr(terminal, "connected", False)):
-        df_fb = get_polygon_rates_fallback(symbol, timeframe, count)
-        return df_fb
-    if not mt5.symbol_select(symbol, True):
-        pass
+        if terminal is None or not getattr(terminal, "connected", False):
+            logger.error("❌ MT5 inicializado mas continua relatando desconectado.")
+            return False
+            
+        logger.info("✅ Conexão MT5 restabelecida com sucesso.")
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao verificar conexão MT5: {e}")
+        return False
 
-    try:
-        bars = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
-        bars_available = 0 if bars is None else len(bars)
-    except Exception:
-        bars_available = 0
 
-    if bars_available < count:
-        mt5.copy_rates_from_pos(symbol, timeframe, 0, 1)
+def safe_copy_rates(
+    symbol: str, timeframe, count: int = 500, timeout: int = 15
+) -> Optional[pd.DataFrame]:
+    """Copia dados históricos com lock, retry e fallback (Polygon)"""
+    if not ensure_mt5_connected():
+        return get_polygon_rates_fallback(symbol, timeframe, count)
+
+    # Tenta selecionar o símbolo
+    selected = False
+    for _ in range(3):
+        if mt5.symbol_select(symbol, True):
+            selected = True
+            break
         time.sleep(0.2)
-
-    # Prepara a função a ser executada
-    def worker():
-        return mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
+    
+    if not selected:
+        error_code, error_msg = mt5.last_error()
+        logger.warning(f"⚠️ safe_copy_rates: Falha ao selecionar {symbol} após retries. Erro MT5: {error_code} ({error_msg})")
+        
+        # Se o erro for de terminal (Call failed), força reconexão total
+        if error_code == -1 or "Call failed" in str(error_msg):
+            logger.info("🚨 Detectado 'Call failed'. Tentando hard reset do MT5...")
+            if ensure_mt5_connected(force=True):
+                # Tenta uma última vez após o reset
+                if mt5.symbol_select(symbol, True):
+                    logger.info(f"✅ Símbolo {symbol} selecionado após hard reset.")
+                    selected = True
+        
+        if not selected:
+            return get_polygon_rates_fallback(symbol, timeframe, count)
 
     rates = None
-    executor = get_mt5_executor()
+    try:
+        with mt5_lock:
+            rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
+            
+        if rates is None or len(rates) == 0:
+            last_err = mt5.last_error()
+            if last_err[0] == -1: # Call failed no download
+                 logger.info("🚨 'Call failed' no download de rates. Forçando reset...")
+                 ensure_mt5_connected(force=True)
+                 with mt5_lock:
+                     rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
+            # Força o refresh do cache do terminal para este símbolo
+            with mt5_lock:
+                mt5.copy_rates_from_pos(symbol, timeframe, 0, 1)
+            time.sleep(0.5)
+            with mt5_lock:
+                rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
+                
+    except Exception as e:
+        logger.error(f"🚨 Erro no download de rates MT5 para {symbol}: {e}")
+        rates = None
 
-    if executor:
-        try:
-            future = executor.submit(worker)
-            rates = future.result(timeout=timeout)
-        except Exception as e:  # TimeoutError ou outras
-            logger.error(f"🚨 TIMEOUT (Pool) MT5 em {symbol}: {e}")
-            rates = None
-    else:
-        # Fallback legado se não tiver executor (improvável)
-        q = queue.Queue()
-
-        def threading_worker():
-            try:
-                q.put(worker())
-            except Exception as e:
-                q.put(e)
-
-        t = threading.Thread(target=threading_worker, daemon=True)
-        t.start()
-        t.join(timeout)
-        if t.is_alive():
-            logger.error(f"🚨 TIMEOUT (Thread) MT5 em {symbol}")
-            return None
-        try:
-            rates = q.get_nowait()
-        except queue.Empty:
-            rates = None
-
-    if isinstance(rates, Exception) or rates is None or len(rates) == 0:
-        # ✅ FALLBACK: Polygon.io
-        logger.warning(f"⚠️ MT5 Falhou em {symbol}. Acionando Polygon.io fallback...")
-        df_fb = get_polygon_rates_fallback(symbol, timeframe, count)
-        return df_fb
+    if rates is None or len(rates) == 0:
+        logger.warning(f"⚠️ {symbol}: MT5 retornou 0 barras. Tentando Fallback Polygon...")
+        return get_polygon_rates_fallback(symbol, timeframe, count)
 
     try:
         df = pd.DataFrame(rates)
@@ -5550,6 +5625,66 @@ def apply_anti_martingale(loss_streak: int) -> float:
     return 1.0
 
 
+def validate_stops_level(symbol: str, side: str, price: float, sl: float, tp: float) -> tuple:
+    """
+    Garante que SL e TP respeitem o stops_level mínimo exigido pelo broker (MT5 Code 10016).
+    O stops_level é em 'pontos' (points). A distância mínima = stops_level * point.
+    Se o SL/TP calculado violar essa distância, ele é empurrado para fora do limite mínimo.
+    """
+    info = mt5.symbol_info(symbol)
+    if not info or price <= 0:
+        return sl, tp
+
+    stops_level = getattr(info, "trade_stops_level", 0) or 0
+    point = getattr(info, "point", 0.01) or 0.01
+    min_distance = stops_level * point
+
+    # Se stops_level == 0 o broker não impõe mínimo — sem ajuste necessário
+    if min_distance <= 0:
+        return sl, tp
+
+    tick_size = getattr(info, "trade_tick_size", point) or point
+
+    if side == "BUY":
+        # SL deve estar pelo menos min_distance ABAIXO do preço
+        min_sl = price - min_distance
+        if sl > min_sl:
+            old_sl = sl
+            sl = round((min_sl - tick_size) / tick_size) * tick_size  # buffer de 1 tick
+            logger.warning(
+                f"⚠️ [{symbol}] SL ajustado pelo stops_level: {old_sl:.4f} → {sl:.4f} "
+                f"(min_distance={min_distance:.4f}, stops_level={stops_level})"
+            )
+        # TP deve estar pelo menos min_distance ACIMA do preço
+        min_tp = price + min_distance
+        if tp < min_tp:
+            old_tp = tp
+            tp = round((min_tp + tick_size) / tick_size) * tick_size
+            logger.warning(
+                f"⚠️ [{symbol}] TP ajustado pelo stops_level: {old_tp:.4f} → {tp:.4f}"
+            )
+    else:  # SELL
+        # SL deve estar pelo menos min_distance ACIMA do preço
+        min_sl = price + min_distance
+        if sl < min_sl:
+            old_sl = sl
+            sl = round((min_sl + tick_size) / tick_size) * tick_size
+            logger.warning(
+                f"⚠️ [{symbol}] SL ajustado pelo stops_level: {old_sl:.4f} → {sl:.4f} "
+                f"(min_distance={min_distance:.4f}, stops_level={stops_level})"
+            )
+        # TP deve estar pelo menos min_distance ABAIXO do preço
+        min_tp = price - min_distance
+        if tp > min_tp:
+            old_tp = tp
+            tp = round((min_tp - tick_size) / tick_size) * tick_size
+            logger.warning(
+                f"⚠️ [{symbol}] TP ajustado pelo stops_level: {old_tp:.4f} → {tp:.4f}"
+            )
+
+    return sl, tp
+
+
 def calculate_dynamic_sl_tp(symbol, side, entry_price, ind):
     atr = ind.get("atr", 0.10)
     adx = ind.get("adx", 20)
@@ -5609,6 +5744,10 @@ def calculate_dynamic_sl_tp(symbol, side, entry_price, ind):
             tp = entry_price - (atr * tp_mult)
     sl = round(sl / tick_size) * tick_size
     tp = round(tp / tick_size) * tick_size
+
+    # 🛡️ Garante que SL/TP respeitam o stops_level mínimo do broker (evita Code 10016)
+    sl, tp = validate_stops_level(symbol, side, entry_price, sl, tp)
+
     return sl, tp
 
 
@@ -6694,596 +6833,26 @@ def check_book_pressure(symbol: str, side: str, depth: int = 5) -> tuple[bool, s
             pressure_ratio = buy_pressure / sell_pressure
 
         pressure_threshold = 1.5  # Limiar configur�vel
+        pressure_threshold = 1.5  # Limiar configurável
 
         if side == "BUY":
             if pressure_ratio >= pressure_threshold:
-                return True, f"Press�o OK (C>V {pressure_ratio:.2f}x)"
+                return True, f"Pressão OK (C>V {pressure_ratio:.2f}x)"
             else:
-                return False, f"Veto Fluxo (Press�o Vendedora: {pressure_ratio:.2f}x)"
+                return False, f"Veto Fluxo (Pressão Vendedora: {pressure_ratio:.2f}x)"
 
         elif side == "SELL":
             if pressure_ratio <= (1 / pressure_threshold):
-                return True, f"Press�o OK (V>C {(1/pressure_ratio):.2f}x)"
+                return True, f"Pressão OK (V>C {(1/pressure_ratio):.2f}x)"
             else:
-                return False, f"Veto Fluxo (Press�o Compradora: {pressure_ratio:.2f}x)"
+                return False, f"Veto Fluxo (Pressão Compradora: {pressure_ratio:.2f}x)"
 
-        return True, "Lado inv�lido"
-
-    except Exception as e:
-        logger.warning(f"Erro ao checar press�o do book para {symbol}: {e}")
-        return True, "Erro na an�lise do book"  # Falha aberta, n�o bloqueia
-
-
-# =========================================================
-# 🎯 B3 DAILY UNIVERSE BUILDER (2026 Optimized)
-# =========================================================
-
-
-def is_future(symbol: str) -> bool:
-    """Verifica se é futuro (WIN, WDO, etc.)"""
-    return symbol.upper().startswith(("WIN", "WDO", "IND", "DOL"))
-
-
-def safe_copy_rates(symbol: str, timeframe: int, count: int) -> pd.DataFrame:
-    """Copia dados históricos com tratamento de erro"""
-    try:
-        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, count)
-        if rates is None or len(rates) < 20:
-            return None
-        df = pd.DataFrame(rates)
-        df["datetime"] = pd.to_datetime(df["time"], unit="s")
-        return df
-    except Exception as e:
-        logger.error(f"Erro ao copiar dados de {symbol}: {e}")
-        return None
-
-
-def get_atr(df: pd.DataFrame, period: int = 14) -> float:
-    """Calcula o Average True Range"""
-    try:
-        high_low = df["high"] - df["low"]
-        high_close = np.abs(df["high"] - df["close"].shift())
-        low_close = np.abs(df["low"] - df["close"].shift())
-        true_range = np.maximum(high_low, np.maximum(high_close, low_close))
-        atr = true_range.rolling(window=period).mean().iloc[-1]
-        return atr
-    except Exception as e:
-        logger.error(f"Erro ao calcular ATR: {e}")
-        return 0.0
-
-
-def get_ibov_correlation(symbol: str, period: int = 60) -> float:
-    """Calcula correlação com IBOV"""
-    try:
-        # Pega dados do ativo
-        df_symbol = safe_copy_rates(symbol, mt5.TIMEFRAME_D1, period)
-        if df_symbol is None:
-            return 0.0
-
-        # Pega dados do IBOV (IBOV)
-        df_ibov = safe_copy_rates("IBOV", mt5.TIMEFRAME_D1, period)
-        if df_ibov is None:
-            # Tenta com WIN (mini índice) como proxy
-            df_ibov = safe_copy_rates("WIN", mt5.TIMEFRAME_D1, period)
-            if df_ibov is None:
-                return 0.0
-
-        # Calcula retornos
-        returns_symbol = df_symbol["close"].pct_change().dropna()
-        returns_ibov = df_ibov["close"].pct_change().dropna()
-
-        # Alinha os dados
-        min_len = min(len(returns_symbol), len(returns_ibov))
-        if min_len < 10:
-            return 0.0
-
-        correlation = np.corrcoef(returns_symbol[-min_len:], returns_ibov[-min_len:])[
-            0, 1
-        ]
-        return abs(correlation) if not np.isnan(correlation) else 0.0
+        return True, "Lado inválido"
 
     except Exception as e:
-        logger.error(f"Erro ao calcular correlação com IBOV para {symbol}: {e}")
-        return 0.0
+        logger.warning(f"Erro ao checar pressão do book para {symbol}: {e}")
+        return True, "Erro na análise do book"  # Falha aberta, não bloqueia
 
-
-class FundamentalFetcher:
-    """Classe para buscar dados fundamentus (mock implementation)"""
-
-    def __init__(self):
-        self.cache = {}
-
-    def get_fundamentals(self, symbol: str) -> dict:
-        """Retorna dados fundamentus do ativo"""
-        try:
-            # Remove o número final do símbolo (PETR4 -> PETR)
-            base_symbol = symbol[:-1] if symbol[-1].isdigit() else symbol
-
-            # Mock implementation - em produção, buscaria de API real
-            # Valores baseados em médias do setor para empresas listadas na B3
-            mock_data = {
-                "PETR": {"market_cap": 200_000_000_000, "sector": "Petróleo"},
-                "VALE": {"market_cap": 300_000_000_000, "sector": "Mineração"},
-                "ITUB": {"market_cap": 250_000_000_000, "sector": "Bancos"},
-                "BBDC": {"market_cap": 180_000_000_000, "sector": "Bancos"},
-                "ABEV": {"market_cap": 150_000_000_000, "sector": "Bebidas"},
-                "WEGE": {"market_cap": 120_000_000_000, "sector": "Alimentos"},
-                "MGLU": {"market_cap": 80_000_000_000, "sector": "Varejo"},
-                "LREN": {"market_cap": 90_000_000_000, "sector": "Varejo"},
-                "RENT": {"market_cap": 60_000_000_000, "sector": "Logística"},
-                "SUZB": {"market_cap": 70_000_000_000, "sector": "Celulose"},
-            }
-
-            # Retorna dados do cache ou padrão
-            if base_symbol in mock_data:
-                return mock_data[base_symbol]
-            else:
-                # Para símbolos não mapeados, retorna valor padrão
-                return {"market_cap": 10_000_000_000, "sector": "Outros"}
-
-        except Exception as e:
-            logger.error(f"Erro ao buscar fundamentus de {symbol}: {e}")
-            return {"market_cap": 10_000_000_000, "sector": "Outros"}
-
-
-# Instância global do fetcher
-fundamental_fetcher = FundamentalFetcher()
-
-# ====================== LISTA OFICIAL - Fevereiro 2026 ======================
-
-ELITE_SYMBOLS = [
-    # Financeiro (12)
-    "ITUB4",
-    "BBDC4",
-    "BBAS3",
-    "B3SA3",
-    "BPAC11",
-    "ITSA4",
-    "SANB11",
-    "BBSE3",
-    "ABCB4",
-    "PINE4",
-    "IRBR3",
-    "PSSA3",
-    # Energia / Petróleo (9)
-    "PETR4",
-    "PRIO3",
-    "VBBR3",
-    "EQTL3",
-    "ENEV3",
-    "NEOE3",
-    "AXIA3",
-    "RECV3",
-    "PETR3",
-    # Materiais Básicos (7)
-    "VALE3",
-    "SUZB3",
-    "GGBR4",
-    "CSNA3",
-    "USIM5",
-    "KLBN11",
-    "AURA33",
-    # Consumo (8)
-    "ABEV3",
-    "JBSS3",
-    "BRFS3",
-    "BEEF3",
-    "CRFB3",
-    "MGLU3",
-    "LREN3",
-    "ASAI3",
-    # Saúde / Varejo / Outros (14)
-    "HAPV3",
-    "RDOR3",
-    "RADL3",
-    "WEGE3",
-    "RENT3",
-    "CCRO3",
-    "VIVT3",
-    "TIMS3",
-    "COGN3",
-    "YDUQ3",
-    "CYRE3",
-    "MRVE3",
-    "MULT3",
-    "IGTI11",
-]
-
-# OPORTUNIDADE (80 exemplos - você pode expandir depois)
-OPORTUNIDADE_SYMBOLS = [
-    "TOTS3",
-    "LWSA3",
-    "DESK3",
-    "AZUL4",
-    "MOVI3",
-    "SLCE3",
-    "RAIZ4",
-    "ONCO3",
-    "QUAL3",
-    "ANIM3",
-    "TEND3",
-    "MDNE3",
-    "SBSP3",
-    "ODPV3",
-    "HYPE3",
-    "CPFE3",
-    "CMIG4",
-    "TAEE11",
-    "ELET3",
-    "ELET6",
-    "CSAN3",
-    "VAMO3",
-    "GMAT3",
-    "ALUP11",
-    "FLRY3",
-    "RENT3",
-    "SULA11",
-    "BOVA11",
-    "SMAL11",
-    "MATB11",
-    "IVVB11",
-    "HASH11",
-    "ALZR11",
-    "KNRI11",
-    "HGLG11",
-    "XPML11",
-    "VISC11",
-    "BRCR11",
-    "HGRE11",
-    "RBRF11",
-    "KNCR11",
-    "MXRF11",
-    "KNHF11",
-    "TGAR11",
-    "IRDM11",
-    "BTCI11",
-    "LVBI11",
-    "HGBS11",
-    "RBRL11",
-    "RBRP11",
-    "KNIP11",
-    "VRTA11",
-    "XPLG11",
-    "PVBI11",
-    "RECT11",
-    "SNCI11",
-    "SNEL11",
-    "SNME11",
-    "TECN3",
-    "SOJA3",
-    "AGRO3",
-    "BRKM5",
-    "UNIP6",
-    "FHER3",
-    "KLBN4",
-    "NUTR3",
-    "TUPY3",
-    "FRAS3",
-    "POMO4",
-    "TASA4",
-    "LEVE3",
-    "SHUL4",
-    "EALT4",
-    "ROMI3",
-    "MWET4",
-    "PTBL3",
-    "ESTC3",
-    "AMAR3",
-    "LAVV3",
-    "CURY3",
-    "EVEN3",
-    "PDGR3",
-    "MRVE3",
-    "TEND3",
-]
-
-# Whitelist de UNITS que são ações (não ETFs/FIIs)
-STOCK_UNITS_WHITELIST = {
-    "SANB11",
-    "BPAC11",
-    "KLBN11",
-    "IGTI11",
-    "TAEE11",
-    "ALUP11",
-    "SULA11",
-}
-
-
-def is_etf_or_fii(symbol: str) -> bool:
-    """
-    Detecta ETFs/FIIs de forma simples:
-    - Termina com '11' e não está na whitelist de UNITS-ação
-    """
-    if not symbol:
-        return False
-    s = symbol.upper().strip()
-    return s.endswith("11") and s not in STOCK_UNITS_WHITELIST
-
-
-def is_stock(symbol: str) -> bool:
-    """
-    Retorna True apenas para ações (exclui futuros, ETFs, FIIs e ADRs).
-    - Deve terminar com dígito
-    - Tamanho até 6 chars
-    - Não pode ser futuro
-    - Se terminar com '11', só aceita se estiver na whitelist
-    - Exclui ADRs (terminam com 33, 34, etc.)
-    """
-    if not symbol:
-        return False
-    s = symbol.upper().strip()
-    if is_future(s):
-        return False
-    if len(s) > 6 or not s[-1].isdigit():
-        return False
-    # Exclui ADRs e ativos estrangeiros (terminam com 33, 34, etc.)
-    if s.endswith(("33", "34", "35", "36", "37", "38", "39")):
-        return False
-    if s.endswith("11"):
-        return s in STOCK_UNITS_WHITELIST
-    return True
-
-
-def auto_add_stocks_to_market_watch(symbols: list, log_name: str = "MarketWatch"):
-    """
-    Adiciona automaticamente uma lista de ações ao Market Watch do MT5.
-    Apenas ações (sem futuros/índices).
-    """
-    added = 0
-    failed = []
-
-    for symbol in symbols:
-        try:
-            # Remove .SA caso alguém coloque por engano
-            clean_sym = symbol.replace(".SA", "").upper().strip()
-
-            # Proteção extra: nunca adiciona futuro/índice/ETF/FII
-            if any(
-                clean_sym.startswith(x) for x in ["WIN", "WDO", "IND", "DOL", "IBOV"]
-            ):
-                continue
-            if is_etf_or_fii(clean_sym):
-                continue
-
-            success = mt5.symbol_select(clean_sym, True)
-            if success:
-                added += 1
-            else:
-                failed.append(clean_sym)
-        except Exception as e:
-            failed.append(clean_sym)
-            logger.error(f"Erro ao adicionar {clean_sym}: {e}")
-
-    logger.info(
-        f"✅ {log_name}: {added} ativos adicionados com sucesso | {len(failed)} falharam"
-    )
-    if failed:
-        logger.warning(f"Falharam: {failed[:20]}...")  # mostra só os primeiros 20
-
-    return added
-
-
-def load_elite_symbols_from_json() -> dict:
-    """
-    Carrega símbolos ELITE do arquivo JSON salvo
-    Retorna: dict com ELITE, OPORTUNIDADE, TOTAL ou None se não existir
-    """
-    try:
-        if os.path.exists("elite_symbols_latest.json"):
-            with open("elite_symbols_latest.json", "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            # Valida estrutura
-            if isinstance(data, dict) and "ELITE" in data:
-                logger.info(
-                    f"📁 Carregando elite_symbols_latest.json: "
-                    f"{len(data.get('ELITE', []))} ELITE | "
-                    f"{len(data.get('OPORTUNIDADE', []))} OPORTUNIDADE"
-                )
-                return data
-            else:
-                logger.warning(
-                    "⚠️ Arquivo elite_symbols_latest.json com estrutura inválida"
-                )
-                return None
-        else:
-            logger.info("ℹ️ Arquivo elite_symbols_latest.json não encontrado")
-            return None
-
-    except Exception as e:
-        logger.error(f"❌ Erro ao carregar elite_symbols_latest.json: {e}")
-        return None
-
-
-def calculate_asset_score(
-    volume: float, atr_pct: float, corr: float, mcap: float, spread_pct: float
-) -> float:
-    """
-    Calcula score de qualidade do ativo B3 (0-100) - Ajustado para mercado B3 2026
-
-    Args:
-        volume: Volume financeiro médio diário
-        atr_pct: ATR como percentual do preço
-        corr: Correlação absoluta com IBOV
-        mcap: Market cap em reais
-        spread_pct: Spread como percentual
-    """
-    score = 0.0
-
-    # 1. Liquidez (40 pts) - Volume financeiro (ajustado para B3)
-    if volume >= 5_000_000:
-        score += 40
-    elif volume >= 2_000_000:
-        score += 30
-    elif volume >= 1_000_000:
-        score += 20
-    elif volume >= 500_000:
-        score += 10
-    else:
-        score += 5
-
-    # 2. Volatilidade ideal (20 pts) - ATR entre 1.8% e 5.5%
-    if 1.8 <= atr_pct <= 5.5:
-        score += 20
-    elif 1.0 <= atr_pct < 1.8:
-        score += 15
-    elif 5.5 < atr_pct <= 7.0:
-        score += 10
-    else:
-        score += 5
-
-    # 3. Baixa correlação com IBOV (20 pts) - Quanto menor, melhor
-    if corr <= 0.60:
-        score += 20
-    elif corr <= 0.75:
-        score += 15
-    elif corr <= 0.85:
-        score += 10
-    else:
-        score += 5
-
-    # 4. Market Cap (10 pts) - Quanto maior, melhor (ajustado para B3)
-    if mcap >= 100_000_000_000:  # 100B+
-        score += 10
-    elif mcap >= 50_000_000_000:  # 50B+
-        score += 8
-    elif mcap >= 20_000_000_000:  # 20B+
-        score += 6
-    elif mcap >= 5_000_000_000:  # 5B+
-        score += 4
-    else:
-        score += 2
-
-    # 5. Spread (10 pts) - Quanto menor, melhor
-    if spread_pct < 0.10:
-        score += 10
-    elif spread_pct < 0.20:
-        score += 8
-    elif spread_pct < 0.35:
-        score += 5
-    else:
-        score += 2
-
-    return round(score, 1)
-
-
-def atomic_save_json(filename: str, data: dict):
-    """Salva JSON de forma atômica"""
-    try:
-        temp_file = filename + ".tmp"
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(temp_file, filename)
-        logger.info(f"✅ Arquivo {filename} salvo com sucesso")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Erro ao salvar {filename}: {e}")
-        return False
-
-
-def build_b3_universe(
-    min_fin_volume: float = 15_000_000,
-    min_atr_pct: float = 0.80,
-    max_atr_pct: float = 7.0,
-    max_ibov_corr: float = 0.82,
-    min_market_cap: float = 1_000_000_000,
-    save_json: bool = True,
-) -> dict:
-    """
-    Scanner dinâmico de ativos B3 - roda 1x/dia
-    Retorna: {'ELITE': [...], 'OPORTUNIDADE': [...], 'TOTAL': [...]}
-    """
-    logger.info("🔍 Iniciando Daily Universe Builder B3...")
-
-    if not mt5:
-        logger.error("❌ MT5 não disponível")
-        return {"ELITE": [], "OPORTUNIDADE": [], "TOTAL": []}
-
-    try:
-        all_symbols = mt5.symbols_get()  # Pega TODOS os símbolos do MT5
-        if not all_symbols:
-            logger.error("❌ Nenhum símbolo encontrado no MT5")
-            return {"ELITE": [], "OPORTUNIDADE": [], "TOTAL": []}
-
-        universe = {"ELITE": [], "OPORTUNIDADE": [], "TOTAL": []}
-
-        logger.info(f"📊 Analisando {len(all_symbols)} símbolos...")
-
-        for sym in all_symbols:
-            name = sym.name.upper()
-
-            # Somente ações (sem futuros/ETFs/FIIs)
-            if not is_stock(name):
-                continue
-
-            info = mt5.symbol_info(name)
-            if not info or info.trade_mode not in [1, 4]:
-                continue
-
-            # Seleciona o símbolo se não estiver selecionado
-            if not info.select:
-                if not mt5.symbol_select(name, True):
-                    logger.debug(f"❌ Falha ao selecionar {name} no Market Watch")
-                    continue
-
-            # === CRITÉRIOS DE QUALIDADE (os mais importantes) ===
-            try:
-                df = safe_copy_rates(name, mt5.TIMEFRAME_D1, 60)  # 60 dias
-                if df is None or len(df) < 20:
-                    continue
-
-                # 1. Liquidez (o mais importante na B3)
-                avg_fin_volume = (
-                    df["tick_volume"] * df["close"]
-                ).mean()  # Volume financeiro médio
-                if avg_fin_volume < min_fin_volume:
-                    continue
-
-                # 2. Volatilidade saudável
-                atr = get_atr(df, 14)
-                current_price = df["close"].iloc[-1]
-                atr_pct = (atr / current_price) * 100
-                if not (min_atr_pct <= atr_pct <= max_atr_pct):
-                    continue
-
-                # 3. Correlação com IBOV (evita concentração)
-                corr = get_ibov_correlation(name)
-                if corr > max_ibov_corr:
-                    continue
-
-                # 4. Market Cap (via fundamentals)
-                fund = fundamental_fetcher.get_fundamentals(name)
-                mcap = fund.get("market_cap", 0)
-                if mcap < min_market_cap:
-                    continue
-
-                # 5. Spread aceitável
-                spread_pct = (
-                    (info.spread * info.point) / info.ask * 100 if info.ask > 0 else 0
-                )
-                if spread_pct > 0.35:
-                    continue
-
-                # Calcula score final
-                score = calculate_asset_score(
-                    avg_fin_volume, atr_pct, corr, mcap, spread_pct
-                )
-
-                # Classifica por score
-                if score >= 85:
-                    universe["ELITE"].append((name, score))
-                elif score >= 65:
-                    universe["OPORTUNIDADE"].append((name, score))
-                else:
-                    universe["TOTAL"].append((name, score))
-
-                logger.debug(
-                    f"✅ {name}: Score {score} (Vol: R${avg_fin_volume:,.0f}, ATR: {atr_pct:.1f}%, Corr: {corr:.2f})"
-                )
-
-            except Exception as e:
-                logger.debug(f"❌ Erro ao analisar {name}: {e}")
-                continue
 
         # Ordena por score e limita a 120 ativos por categoria
         for key in universe:

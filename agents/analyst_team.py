@@ -1,7 +1,24 @@
-
 import logging
 import pandas as pd
+import os
+import sys
 from typing import Dict, Any, List
+
+# Adiciona o diretório raiz ao path para garantir que 'utils' e 'config' sejam localizados
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if root_path not in sys.path:
+    sys.path.append(root_path)
+
+try:
+    import utils
+    import config as cfg
+    import MetaTrader5 as mt5
+    import fundamentals
+except ImportError as e:
+    logger = logging.getLogger("AnalystTeam")
+    logger.error(f"❌ Erro crítico de importação em analyst_team.py: {e}")
+    # Fallback ou raise dependendo da criticidade
+    raise e
 
 logger = logging.getLogger("AnalystTeam")
 
@@ -13,11 +30,7 @@ class FundamentalAnalyst(Analyst):
     def analyze(self, symbol: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         FIX: usa métricas MT5 reais (avg_tick_volume, atr_pct, bars)
-        em vez de market_cap que MT5 nunca retorna (sempre 0 → score sempre 0.40).
-        FIX2: quando MT5 retorna bars=0 (sem conexão), retorna NEUTRO em vez de
-        penalizar 3x gerando score 0.25 'expensive' (bear falso por conectividade).
         """
-        import utils
         
         logger.info(f"🔎 [Fundamental] Analisando métricas de liquidez/vol de {symbol}...")
         
@@ -28,7 +41,7 @@ class FundamentalAnalyst(Analyst):
         fund = {}
         
         try:
-            fund = utils.fundamental_fetcher.get_fundamentals(symbol)
+            fund = fundamentals.fundamental_fetcher.get_fundamentals(symbol)
             avg_vol = fund.get("mt5_avg_tick_volume", 0.0)
             atr_pct = fund.get("mt5_atr_pct", 0.0)
             bars    = fund.get("mt5_bars", 0)
@@ -37,10 +50,11 @@ class FundamentalAnalyst(Analyst):
             # Falha de conectividade/símbolo não selecionado NÃO é sinal bearish!
             # Antes: bars=0 → penalizava 3x → score 0.25 → 'expensive' → bear+1.0 (falso!)
             if bars <= 0:
-                logger.info(f"   ↳ Sem dados MT5 para {symbol} (bars=0) → Neutro por default")
+                logger.warning(f"⚠️ Sem dados MT5 para {symbol} (bars=0) → VALID=FALSE")
                 return {
                     "type": "fundamental",
-                    "score": 0.50,
+                    "score": 0.0,
+                    "valid": False,
                     "valuation": "neutral",
                     "risks": ["no_mt5_data"],
                     "drivers": [],
@@ -85,7 +99,6 @@ class FundamentalAnalyst(Analyst):
                 risks.append("short_history")
             
             # --- Contexto setorial via config ---
-            import config as cfg
             sector = cfg.SECTOR_MAP.get(symbol, "OUTROS")
             if sector in ("FINANCEIRO", "PETROLEO", "MINERACAO", "UTILIDADE_PUBLICA"):
                 score += 0.05
@@ -97,10 +110,11 @@ class FundamentalAnalyst(Analyst):
             score = max(0.15, min(0.90, score))
             
         except Exception as e:
-            logger.warning(f"Erro na análise fundamentalista: {e}")
+            logger.error(f"❌ Erro na análise fundamentalista de {symbol}: {e}")
             return {
                 "type": "fundamental",
-                "score": 0.50,
+                "score": 0.0,
+                "valid": False,
                 "valuation": "neutral",
                 "risks": ["analysis_error"],
                 "drivers": [],
@@ -121,6 +135,7 @@ class FundamentalAnalyst(Analyst):
         result = {
             "type": "fundamental",
             "score": score,
+            "valid": True,
             "valuation": valuation,
             "risks": risks,
             "drivers": drivers,
@@ -133,12 +148,22 @@ class SentimentAnalyst(Analyst):
     def analyze(self, symbol: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         FIX: usa ibov_trend real do market_data em vez de random.uniform.
-        Random é ruído puro — não contribui para sinal algum.
+        Random é ruído puro - não contribui para sinal algum.
         """
         logger.info(f"🐦 [Sentiment] Avaliando sentimento de mercado para {symbol}...")
         
         # Mapa de tendência do IBOV → score de sentimento
-        ibov_trend = data.get("ibov_trend", "neutral")
+        ibov_trend = data.get("ibov_trend")
+        if not ibov_trend:
+            logger.warning(f"⚠️ Sem dados de sentimento (ibov_trend) para {symbol} → VALID=FALSE")
+            return {
+                "type": "sentiment",
+                "score": 0.0,
+                "valid": False,
+                "sentiment": "neutral",
+                "reason": "no_ibov_data"
+            }
+
         trend_to_score = {
             "bullish":        0.72,
             "neutral":        0.52,
@@ -159,6 +184,7 @@ class SentimentAnalyst(Analyst):
         result = {
             "type": "sentiment",
             "score": score,
+            "valid": True,
             "sentiment": sentiment,
             "sources": ["ibov_trend"],
             "ibov_trend_used": ibov_trend
@@ -180,9 +206,11 @@ class TechnicalAnalyst(Analyst):
         df = data.get('candles')
         
         if df is None or df.empty:
+             logger.warning(f"⚠️ Sem candles para análise técnica de {symbol} → VALID=FALSE")
              return {
                 "type": "technical",
-                "score": 0.5,
+                "score": 0.0,
+                "valid": False,
                 "trend": "neutral",
                 "reason": "no_data"
             }
@@ -198,6 +226,7 @@ class TechnicalAnalyst(Analyst):
         result = {
             "type": "technical",
             "score": prediction['probability'],
+            "valid": True,
             "trend": trend,
             "signals": ["ml_rf_ensemble"],
             "raw_prediction": prediction

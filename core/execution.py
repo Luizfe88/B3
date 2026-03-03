@@ -37,21 +37,78 @@ class ExecutionEngine:
 
     def connect(self) -> bool:
         with self._lock:
-            if not mt5.initialize():
+            # Se já estiver conectado e o terminal responder, não reinicia
+            if self._connected:
+                info = mt5.terminal_info()
+                if info and info.connected:
+                    return True
+
+            import config
+            mt5_acc = getattr(config, "MT5_ACCOUNT", 0)
+            init_params = {
+                "path": getattr(config, "MT5_TERMINAL_PATH", None),
+                "login": int(mt5_acc) if mt5_acc is not None else 0,
+                "password": str(getattr(config, "MT5_PASSWORD", "") or ""),
+                "server": str(getattr(config, "MT5_SERVER", "") or ""),
+                "timeout": 10000
+            }
+            
+            # Filtra None (MT5_TERMINAL_PATH pode ser None)
+            init_params = {k: v for k, v in init_params.items() if v is not None}
+
+            if not mt5.initialize(**init_params):
                 logger.error(f"❌ Falha ao inicializar MT5: {mt5.last_error()}")
                 self._connected = False
                 return False
             
-            # Check terminal connection status
+            # Pequeno delay para estabilização da conexão com o servidor
+            time.sleep(1.0)
+
+            # Verifica conexão efetiva com o servidor de trade
             terminal_info = mt5.terminal_info()
             if terminal_info is None:
                 logger.warning("⚠️ Falha ao obter informações do terminal.")
+                self._connected = False
+                return False
             elif not terminal_info.connected:
-                 logger.warning("⚠️ Terminal MT5 inicializado, mas desconectado do servidor.")
+                 logger.warning("⚠️ Terminal MT5 inicializado, mas desconectado do servidor (Verifique login/proxy).")
+                 self._connected = False
+                 return False
             
             self._connected = True
-            logger.info("✅ Conectado ao MetaTrader 5")
+            logger.info(f"✅ Conectado ao MetaTrader 5 (Conta: {init_params.get('login')})")
             return True
+
+    def safe_symbol_select(self, symbol: str, select: bool = True, max_retries: int = 3) -> bool:
+        """
+        Encapsula mt5.symbol_select com mecanismo de retry leve.
+        Evita reiniciar o MT5 desnecessariamente.
+        """
+        if not self._connected:
+            if not self.connect():
+                return False
+
+        for attempt in range(max_retries):
+            with self._lock:
+                if mt5.symbol_select(symbol, select):
+                    return True
+                
+                err = mt5.last_error()
+                # Code -1: Terminal: Call failed (Geralmente congestionamento de IPC)
+                if err[0] == -1:
+                    logger.warning(f"⚠️ [Attempt {attempt+1}/{max_retries}] {symbol} select failed (IPC load). Waiting...")
+                    time.sleep(1.0 * (attempt + 1))
+                    # Só tenta reconectar no último suspiro se o terminal parecer morto
+                    if attempt == max_retries - 1:
+                        info = mt5.terminal_info()
+                        if not info or not info.connected:
+                            self.connect()
+                else:
+                    # Símbolo pode não existir no servidor
+                    logger.debug(f"ℹ️ Símbolo {symbol} não disponível para seleção: {err}")
+                    return False
+        
+        return False
 
     def shutdown(self):
         with self._lock:
@@ -70,7 +127,50 @@ class ExecutionEngine:
 
         action = mt5.TRADE_ACTION_DEAL
         type_order = mt5.ORDER_TYPE_BUY if order.side == OrderSide.BUY else mt5.ORDER_TYPE_SELL
-        
+
+        # ─── Pré-validação: stops_level mínimo do broker (evita Code 10016) ──────
+        tick = mt5.symbol_info_tick(order.symbol)
+        ref_price = tick.ask if order.side == OrderSide.BUY else tick.bid if tick else 0.0
+        info = mt5.symbol_info(order.symbol)
+        if info and ref_price > 0:
+            stops_level = getattr(info, "trade_stops_level", 0) or 0
+            point       = getattr(info, "point", 0.01) or 0.01
+            tick_size   = getattr(info, "trade_tick_size", point) or point
+            min_dist    = stops_level * point
+            if min_dist > 0:
+                sl, tp = order.sl, order.tp
+                if order.side == OrderSide.BUY:
+                    if sl > 0 and sl > (ref_price - min_dist):
+                        new_sl = round((ref_price - min_dist - tick_size) / tick_size) * tick_size
+                        logger.warning(
+                            f"🛡️ [PRE-SEND] SL BUY muito próximo em {order.symbol}: "
+                            f"{sl:.4f} → {new_sl:.4f} (stops_level={stops_level}, min={min_dist:.4f})"
+                        )
+                        order.sl = new_sl
+                    if tp > 0 and tp < (ref_price + min_dist):
+                        new_tp = round((ref_price + min_dist + tick_size) / tick_size) * tick_size
+                        logger.warning(
+                            f"🛡️ [PRE-SEND] TP BUY muito próximo em {order.symbol}: "
+                            f"{tp:.4f} → {new_tp:.4f}"
+                        )
+                        order.tp = new_tp
+                else:  # SELL
+                    if sl > 0 and sl < (ref_price + min_dist):
+                        new_sl = round((ref_price + min_dist + tick_size) / tick_size) * tick_size
+                        logger.warning(
+                            f"🛡️ [PRE-SEND] SL SELL muito próximo em {order.symbol}: "
+                            f"{sl:.4f} → {new_sl:.4f} (stops_level={stops_level}, min={min_dist:.4f})"
+                        )
+                        order.sl = new_sl
+                    if tp > 0 and tp > (ref_price - min_dist):
+                        new_tp = round((ref_price - min_dist - tick_size) / tick_size) * tick_size
+                        logger.warning(
+                            f"🛡️ [PRE-SEND] TP SELL muito próximo em {order.symbol}: "
+                            f"{tp:.4f} → {new_tp:.4f}"
+                        )
+                        order.tp = new_tp
+        # ─────────────────────────────────────────────────────────────────────────
+
         request = {
             "action": action,
             "symbol": order.symbol,

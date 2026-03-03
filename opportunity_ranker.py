@@ -24,20 +24,34 @@ class OpportunityRanker:
             'sentiment': 0.10
         }
 
-    def _extract_scores(self, decision: Dict) -> Dict[str, float]:
-        """Extrai sub-scores normalizados das análises do FundManager (0.0 a 1.0)"""
+    def _extract_scores(self, decision: Dict) -> Tuple[Dict[str, float], bool]:
+        """
+        Extrai sub-scores normalizados das análises do FundManager (0.0 a 1.0)
+        Retorna (scores, is_valid)
+        """
+        is_valid = True
         
         # 1. Debate Diff (quão unânime é o research team)
-        debate_info = decision.get("debate_info", {})
-        diff = abs(debate_info.get("diff", 0.0))
+        debate_info = decision.get("debate") or decision.get("debate_info", {})
+        # Calcula diff absoluto entre bull e bear scores
+        bull = debate_info.get("bull_score", 0.0)
+        bear = debate_info.get("bear_score", 0.0)
+        diff = abs(bull - bear)
+        
         # Normalizando o diff (normalmente varia de 0.0 a ~3.5). Limitando a 2.5 
         debate_score = min(1.0, diff / 2.5) 
 
         # 2. ML Probability
-        analysis = decision.get("analysis", {})
+        analysis = decision.get("reports") or decision.get("analysis", {})
         tech = analysis.get("technical", {})
-        # Usamos a score de probabilidade pura se diponível, ou uma média conservadora
-        ml_prob = tech.get("score", 0.50)  
+        ml_prob = tech.get("score", 0.50)
+        
+        # --- CRITICO: Rejeição por score neutro 0.50 (Somente se for resposta padrão) ---
+        # Se valid for True, 0.50 pode ser uma análise neutra legítima.
+        # Se valid for False ou ausente, 0.50 é o default de falha.
+        if ml_prob == 0.50 and tech.get("valid") is not True:
+            logger.warning(f"🚨 [Ranker] Score ML neutro padrão (0.50) detectado sem flag 'valid=True'.")
+            is_valid = False
 
         # 3. Order Flow Imbalance
         flow = analysis.get("orderflow", {})
@@ -48,17 +62,23 @@ class OpportunityRanker:
         # 4. Sentiment
         sentiment = analysis.get("sentiment", {})
         sent_pct = sentiment.get("score", 0.50)
-        # Transforma o score (0.20 a 0.80) em força de convicção (distância do meio)
-        # Quanto mais longe do neutro, mais convicção
         dist_neutral = abs(sent_pct - 0.50) * 2  # range 0.0 a 1.0
         sentiment_score = min(1.0, dist_neutral)
+
+        # --- CRITICO: Verificação Global de Flag 'valid' dos Analistas (Verbose) ---
+        for key in ["technical", "fundamental", "sentiment", "orderflow"]:
+            report = analysis.get(key, {})
+            if report.get("valid") is False:
+                logger.warning(f"🚨 [Ranker] Analista '{key}' reportou VALID=FALSE.")
+                is_valid = False
+                break
 
         return {
             'debate': debate_score,
             'ml': ml_prob,
             'flow': flow_score,
             'sentiment': sentiment_score
-        }
+        }, is_valid
 
     def rank_opportunities(self, opportunities: List[Tuple[str, Dict]]) -> List[Tuple[str, Dict]]:
         """
@@ -75,8 +95,13 @@ class OpportunityRanker:
 
         ranked_list = []
         for symbol, decision in opportunities:
-            scores = self._extract_scores(decision)
+            scores, is_valid = self._extract_scores(decision)
             
+            # --- FAIL-FAST: Descarta ativos inválidos ou sem convicção real ---
+            if not is_valid:
+                logger.warning(f"⚠️ [{symbol}] Descartado por falta de dados reais ou score ML neutro (valid=False).")
+                continue
+
             # Conviction Score (Ponderada)
             final_conviction = (
                 (scores['debate'] * self.weights['debate']) +

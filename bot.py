@@ -93,7 +93,7 @@ def main():
     valid_symbols = []
 
     for sym in all_symbols:
-        if mt5.symbol_select(sym, True):
+        if execution.safe_symbol_select(sym, True):
             valid_symbols.append(sym)
         else:
             logger.warning(
@@ -185,29 +185,8 @@ def main():
             for symbol in symbols:
                 try:
                     # 1. Coleta dados de mercado (Market Data)
-                    if not mt5.symbol_select(symbol, True):
-                        # Tenta novamente após um curto delay (pode ser problema de rede momentâneo)
-                        time.sleep(0.1)
-                        if not mt5.symbol_select(symbol, True):
-                            # Tenta reconectar se falhar duas vezes
-                            logger.warning(
-                                f"⚠️ Falha ao selecionar {symbol}. Tentando reconexão com MT5..."
-                            )
-                            if execution.connect():
-                                if mt5.symbol_select(symbol, True):
-                                    logger.info(
-                                        f"✅ {symbol} selecionado após reconexão."
-                                    )
-                                else:
-                                    logger.warning(
-                                        f"⚠️ Não foi possível selecionar {symbol} no MT5 mesmo após reconexão. Erro: {mt5.last_error()}. Pulando."
-                                    )
-                                    continue
-                            else:
-                                logger.error(
-                                    "❌ Falha na reconexão com MT5 durante o loop."
-                                )
-                                continue
+                    if not execution.safe_symbol_select(symbol, True):
+                        continue
 
                     # Candles (últimos 100 M15)
                     candles = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M15, 100)
@@ -308,15 +287,44 @@ def main():
 
                 logger.info(f"📈 Limite de ação neste ciclo: top {vagas_reais} operações.")
 
+                # Dicionário para contar posições por setor no ciclo atual
+                # para evitar estourar o limite de 2 durante a execução sequencial
+                current_sector_counts = {}
+                for p in open_positions_post_scan:
+                    sec = config.SECTOR_MAP.get(p["symbol"], "Outros")
+                    current_sector_counts[sec] = current_sector_counts.get(sec, 0) + 1
+
                 for rank_idx, (symbol, decision) in enumerate(ranked_opportunities):
                     if rank_idx >= vagas_reais:
                         logger.info(f"✂️ {symbol} ignorado (Ranking #{rank_idx+1} fora do limite top {vagas_reais}).")
+                        continue
+
+                    # --- VALIDAÇÃO DE SETOR (Limite de 2) ---
+                    symbol_sector = config.SECTOR_MAP.get(symbol, "Outros")
+                    current_sec_count = current_sector_counts.get(symbol_sector, 0)
+                    
+                    if current_sec_count >= config.MAX_PER_SECTOR:
+                        logger.warning(
+                            f"⚠️ {symbol} ignorado (Limite de {config.MAX_PER_SECTOR} posições por setor atingido para {symbol_sector})."
+                        )
                         continue
 
                     logger.info(f"🚀 Iniciando execução rankeada #{rank_idx+1}: {symbol} -> {decision['action']}")
                     
                     # 3. Execução Final
                     if decision["action"] == "BUY":
+                        # ── Busca dados frescos do símbolo (evita usar price/candles do último scan) ──
+                        _tick = mt5.symbol_info_tick(symbol)
+                        if _tick is None:
+                            logger.warning(f"⚠️ Sem tick para {symbol} na execução. Pulando.")
+                            continue
+                        current_price = _tick.ask  # Para BUY, usamos o ask
+                        candles = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M15, 100)
+                        if candles is None or candles.empty:
+                            logger.warning(f"⚠️ Sem candles para {symbol} na execução. Pulando.")
+                            continue
+                        # ────────────────────────────────────────────────────────────────────────────
+
                         # Valida se já tem posição
                         open_positions = position_manager.get_open_positions()
                         for p in open_positions:
@@ -407,8 +415,23 @@ def main():
                             f"⏳ Aguardando confirmação de {symbol} no MT5 (1.5s)..."
                         )
                         time.sleep(1.5)  # Dá tempo para o MT5 registrar a posição
+                        
+                        # Incrementa contador do setor após execução bem-sucedida
+                        current_sector_counts[symbol_sector] = current_sector_counts.get(symbol_sector, 0) + 1
 
                     elif decision["action"] == "SELL":
+                        # ── Busca dados frescos do símbolo (evita usar price/candles do último scan) ──
+                        _tick = mt5.symbol_info_tick(symbol)
+                        if _tick is None:
+                            logger.warning(f"⚠️ Sem tick para {symbol} na execução. Pulando.")
+                            continue
+                        current_price = _tick.bid  # Para SELL, usamos o bid
+                        candles = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M15, 100)
+                        if candles is None or candles.empty:
+                            logger.warning(f"⚠️ Sem candles para {symbol} na execução. Pulando.")
+                            continue
+                        # ────────────────────────────────────────────────────────────────────────────
+
                         # Valida se já tem posição
                         open_positions = position_manager.get_open_positions()
                         for p in open_positions:
@@ -494,6 +517,9 @@ def main():
                             f"⏳ Aguardando confirmação de {symbol} no MT5 (1.5s)..."
                         )
                         time.sleep(1.5)  # Dá tempo para o MT5 registrar a posição
+
+                        # Incrementa contador do setor após execução bem-sucedida
+                        current_sector_counts[symbol_sector] = current_sector_counts.get(symbol_sector, 0) + 1
 
             # Gerenciamento de posições abertas
             position_manager.update_stops()

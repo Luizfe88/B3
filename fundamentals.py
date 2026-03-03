@@ -7,6 +7,7 @@ from typing import Tuple, Dict
 import MetaTrader5 as mt5
 import pandas as pd
 import config
+import utils
 
 logger = logging.getLogger("fundamentals")
 

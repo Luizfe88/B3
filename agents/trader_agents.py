@@ -27,7 +27,7 @@ class RiskyTrader(Trader):
             logger.info(f"   ↳ Proposta: VENDA (Agressiva) — consenso={consensus}")
             return {"action": "SELL", "size_multiplier": 1.0, "stop_loss_pct": 0.04}
 
-        return {"action": "HOLD", "reason": "Sem consenso direcional"}
+        return {"action": "HOLD", "reason": "Dados insuficientes ou consenso neutro"}
 
 
 class NeutralTrader(Trader):
@@ -65,7 +65,7 @@ class NeutralTrader(Trader):
             logger.info(f"   ↳ Proposta: VENDA (Balanceada) — consenso BEARISH")
             return {"action": "SELL", "size_multiplier": 0.9, "stop_loss_pct": 0.03}
 
-        return {"action": "HOLD", "reason": "Sem confluência suficiente"}
+        return {"action": "HOLD", "reason": "Dados insuficientes ou cenário neutro"}
 
 
 class SafeTrader(Trader):
@@ -105,7 +105,7 @@ class SafeTrader(Trader):
             logger.info(f"   ↳ Proposta: VENDA (Conservadora) — val={fund.get('valuation')}")
             return {"action": "SELL", "size_multiplier": 0.7, "stop_loss_pct": 0.015}
 
-        return {"action": "HOLD", "reason": "Sem confirmação suficiente"}
+        return {"action": "HOLD", "reason": "Dados insuficientes ou cenário neutro"}
 
 
 class TraderTeam:

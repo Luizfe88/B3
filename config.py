@@ -48,7 +48,7 @@ MARKET_REGIME_FILTER = config["risk_limits"].get("market_regime_filter", True)
 MAX_SYMBOLS = config["risk_limits"][
     "max_concurrent_positions"
 ]  # Total de posições simultâneas
-MAX_PER_SECTOR = 10  # Máximo de posições por setor (Liberado, controlado por volume financeiro)
+MAX_PER_SECTOR = 2  # Máximo de 2 posições por setor
 
 # Entry Filters
 SPREAD_MAX_MULTIPLIER = config["entry_filters"]["spread_filter"][

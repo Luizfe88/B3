@@ -26,12 +26,13 @@ class OrderFlowAnalyst:
         
         ticks = data.get('ticks', [])
         
-        # Verificação de dados mínimos
-        if ticks is None or len(ticks) < 50:
-             logger.info(f"   ↳ Pressure: neutral | Imbalance: 0.00 | Score: 0.50 (Insufficient Data: {len(ticks) if ticks is not None else 0} ticks)")
+        # Verificação de dados mínimos (Relaxado para 10 ticks para evitar mass-rejection)
+        if ticks is None or len(ticks) < 10:
+             logger.warning(f"⚠️ [{symbol}] Dados de fluxo insuficientes ({len(ticks) if ticks is not None else 0} ticks) → VALID=FALSE")
              return {
                 "type": "order_flow",
-                "score": 0.5,
+                "score": 0.0,
+                "valid": False,
                 "pressure": "neutral",
                 "imbalance": 0.0,
                 "reason": "insufficient_tick_data"
@@ -46,10 +47,11 @@ class OrderFlowAnalyst:
             df = ticks
 
         if df.empty:
-             logger.info(f"   ↳ Pressure: neutral | Imbalance: 0.00 | Score: 0.50 (Empty Data)")
+             logger.warning(f"⚠️ [{symbol}] DataFrame de fluxo vazio → VALID=FALSE")
              return {
                 "type": "order_flow",
-                "score": 0.5,
+                "score": 0.0,
+                "valid": False,
                 "pressure": "neutral",
                 "imbalance": 0.0,
                 "reason": "empty_tick_data"
@@ -111,6 +113,7 @@ class OrderFlowAnalyst:
         return {
             "type": "order_flow",
             "score": score,
+            "valid": True,
             "pressure": trend,
             "imbalance": imbalance,
             "metrics": {
