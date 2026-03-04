@@ -10,6 +10,14 @@ AGGRESSIVE_MODE: True
 
 # -- PARÂMETROS DE CONEXÃO --
 mt5:
+  # --- Template XP Investimentos ---
+  # terminal_path: "C:\\MetaTrader 5 Terminal\\terminal64.exe"
+  # server: "XP-PRD"
+  
+  # --- Template Clear Corretora ---
+  # terminal_path: "C:\\Program Files\\Clear Corretora MetaTrader 5\\terminal64.exe"
+  # server: "Clear-PRD"
+
   terminal_path: "C:\\MetaTrader 5 Terminal\\terminal64.exe"
   account: 
   password: ""

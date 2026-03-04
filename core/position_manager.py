@@ -89,7 +89,7 @@ class PositionManager:
         Inclui travamento inteligente e Circuit Breaker para não devolver lucro.
         """
         from trailing_stop import calculate_dynamic_stop, TrailingStopConfig
-        import mt5  # Garantir acesso ao timeframe e symbols
+        import MetaTrader5 as mt5  # Garantir acesso ao timeframe e symbols
         
         positions = self.get_open_positions()
         if not positions:
