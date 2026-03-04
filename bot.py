@@ -174,21 +174,30 @@ def main():
                 time.sleep(60)
                 continue
 
-            opportunities = [] # Array para acumular scans
-
-            # 1. Atualiza trailing stops das posições existentes ANTES de abrir novas
+            # 1. Atualiza trailing stops das posições existentes ANTES de abrir novas (Crucial para stop móvel)
             position_manager.update_stops()
 
-            # Obtém lista de ativos (Apenas os válidos)
-            symbols = valid_symbols
+            # 2. Contexto Global de Mercado (Fora do loop para evitar redundância)
+            ibov_regime = utils.get_market_regime()
+            logger.info(f"🌍 Contexto de Mercado: IBOV {ibov_regime.upper()}")
+            
+            opportunities = [] # Array para acumular scans
+            total_symbols = len(symbols)
 
-            for symbol in symbols:
+            symbols_to_remove = []
+            for i, symbol in enumerate(valid_symbols):
+                # Log de progresso (a cada 25 ativos ou no início/fim)
+                if (i + 1) % 25 == 0 or i == 0 or (i + 1) == total_symbols:
+                    logger.info(f"🔍 Scan em progresso: {i+1}/{total_symbols} ativos processados...")
+
                 try:
                     # 1. Coleta dados de mercado (Market Data)
                     if not execution.safe_symbol_select(symbol, True):
+                        logger.warning(f"⚠️ {symbol} indisponível. Removendo do scan para evitar retries.")
+                        symbols_to_remove.append(symbol)
                         continue
 
-                    # Candles (últimos 100 M15)
+                    # 1.1 Candles (últimos 100 M15) - Cache do terminal geralmente rápido
                     candles = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M15, 100)
                     if candles is None or candles.empty:
                         logger.warning(
@@ -196,34 +205,28 @@ def main():
                         )
                         continue
 
-                    # Preço atual e Ticks
+                    # 1.2 Preço atual (Fast call)
                     tick_info = mt5.symbol_info_tick(symbol)
                     current_price = (
-                        tick_info.last if tick_info else candles["close"].iloc[-1]
+                        tick_info.last if tick_info and tick_info.last > 0 else (tick_info.bid if tick_info else candles["close"].iloc[-1])
                     )
 
-                    # Ticks (últimos 1000 ticks) - Usando horário do servidor para evitar problemas de fuso
+                    # 1.3 Ticks (Últimos 800 negócios - Hack do Futuro para Timezone & Compatibilidade API C)
                     try:
-                        if tick_info:
-                            server_time = datetime.fromtimestamp(tick_info.time)
-                            # Pega ticks da última hora baseada no servidor
-                            ticks = mt5.copy_ticks_range(
-                                symbol,
-                                server_time - timedelta(hours=1),
-                                server_time,
-                                mt5.COPY_TICKS_ALL,
-                            )
-                        else:
-                            # Fallback se não tiver tick info (mercado fechado/sem dados recentes)
-                            # Tenta pegar ultimos 1000 a partir de agora (menos confiável se fuso errado)
-                            ticks = mt5.copy_ticks_from(
-                                symbol,
-                                datetime.now() - timedelta(hours=1),
-                                1000,
-                                mt5.COPY_TICKS_ALL,
-                            )
+                        # Criamos um "Teto" no futuro para anular qualquer desvio de fuso horário
+                        future_target = datetime.now() + timedelta(days=1)
+                        
+                        # Ao pedir dados do futuro, o MT5 entrega os últimos N ticks mais recentes
+                        # Usamos COPY_TICKS_TRADE para pegar apenas agressões reais (sem ruído de book)
+                        ticks_data = mt5.copy_ticks_from(
+                            symbol,
+                            future_target,
+                            800,
+                            mt5.COPY_TICKS_TRADE,
+                        )
+                        ticks = ticks_data if ticks_data is not None else []
                     except Exception as e:
-                        logger.warning(f"⚠️ Erro ao obter ticks para {symbol}: {e}")
+                        logger.error(f"⚠️ Erro crítico na API C do MT5 ao buscar ticks para {symbol}: {e}")
                         ticks = []
 
                     # Dados Globais de Risco
@@ -251,7 +254,7 @@ def main():
                         "recent_entries_count": position_manager.count_recent_entries(
                             minutes=60
                         ),
-                        "ibov_trend": utils.get_market_regime(),
+                        "ibov_trend": ibov_regime,
                         **sector_exposure,  # Adiciona exposições setoriais ao contexto
                     }
 
@@ -269,6 +272,13 @@ def main():
                     logger.error(f"❌ Erro ao analisar {symbol}: {e}")
                     import traceback
                     traceback.print_exc()
+
+            # Remove ativos que falharam no scan permanentemente para esta sessão
+            if symbols_to_remove:
+                for sym in symbols_to_remove:
+                    if sym in valid_symbols:
+                        valid_symbols.remove(sym)
+                logger.info(f"🧹 Limpeza concluída: {len(symbols_to_remove)} ativos removidos. Restam {len(valid_symbols)} na lista.")
 
             # =======================================================
             # 💡 FASE 2: RANK E EXECUÇÃO (Global Context)

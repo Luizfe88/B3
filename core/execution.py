@@ -79,12 +79,26 @@ class ExecutionEngine:
             logger.info(f"✅ Conectado ao MetaTrader 5 (Conta: {init_params.get('login')})")
             return True
 
+    def is_connected(self) -> bool:
+        """Verifica se o terminal está efetivamente conectado ao servidor."""
+        with self._lock:
+            if not self._connected:
+                return False
+            info = mt5.terminal_info()
+            return info is not None and info.connected
+
     def safe_symbol_select(self, symbol: str, select: bool = True, max_retries: int = 3) -> bool:
         """
-        Encapsula mt5.symbol_select com mecanismo de retry leve.
-        Evita reiniciar o MT5 desnecessariamente.
+        Encapsula mt5.symbol_select com mecanismo de skip rápido e retry.
         """
-        if not self._connected:
+        # --- FAST SKIP: Se o símbolo nem existe no servidor, pula imediatamente ---
+        with self._lock:
+            sym_info = mt5.symbol_info(symbol)
+            if sym_info is None:
+                logger.warning(f"❌ Símbolo {symbol} NÃO encontrado no servidor. Pulando permanentemente.")
+                return False
+
+        if not self.is_connected():
             if not self.connect():
                 return False
 
@@ -98,14 +112,13 @@ class ExecutionEngine:
                 if err[0] == -1:
                     logger.warning(f"⚠️ [Attempt {attempt+1}/{max_retries}] {symbol} select failed (IPC load). Waiting...")
                     time.sleep(1.0 * (attempt + 1))
-                    # Só tenta reconectar no último suspiro se o terminal parecer morto
+                    
                     if attempt == max_retries - 1:
-                        info = mt5.terminal_info()
-                        if not info or not info.connected:
+                        if not self.is_connected():
                             self.connect()
                 else:
-                    # Símbolo pode não existir no servidor
-                    logger.debug(f"ℹ️ Símbolo {symbol} não disponível para seleção: {err}")
+                    # Outro erro (Ex: limite de ativos no MarketWatch atingido)
+                    logger.error(f"❌ Falha ao selecionar {symbol}: {err}")
                     return False
         
         return False
@@ -121,7 +134,7 @@ class ExecutionEngine:
         Envia uma ordem para o MT5.
         Retorna dicionário com resultado ou erro.
         """
-        if not self._connected:
+        if not self.is_connected():
             if not self.connect():
                 return {"status": "error", "message": "MT5 not connected"}
 
@@ -265,6 +278,8 @@ class ExecutionEngine:
             return True
 
     def get_positions(self, symbol: Optional[str] = None) -> list:
+        if not self.is_connected():
+            self.connect()
         with self._lock:
             if symbol:
                 return list(mt5.positions_get(symbol=symbol) or [])
