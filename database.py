@@ -459,6 +459,26 @@ def save_adaptive_config(config_data: dict) -> None:
         conn.close()
 
 
+def get_latest_adaptive_config() -> dict:
+    """Retorna os últimos parâmetros salvos do Adaptive Intelligence, ou None se vazio."""
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_adaptive_config_table(conn)
+        df = pd.read_sql_query(
+            "SELECT * FROM adaptive_config ORDER BY timestamp DESC LIMIT 1",
+            conn
+        )
+        if len(df) == 0:
+            return None
+        return df.iloc[0].to_dict()
+    except Exception as e:
+        logger.error(f"Erro ao buscar o último adaptive_config: {e}")
+        return None
+    finally:
+        conn.close()
+
+
 def get_trades_since(start_time: datetime):
     init_db()
     migrate_db()

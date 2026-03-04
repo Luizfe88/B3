@@ -107,6 +107,7 @@ def main():
     logger.info("🚀 Iniciando loop de mercado.")
 
     try:
+        last_report_date = None
         while True:
             # Verifica se deve fechar posições no final do dia
             now = datetime.now()
@@ -132,6 +133,15 @@ def main():
                     logger.info(
                         "💤 Mercado fechado ou horário limite atingido. Aguardando..."
                     )
+                
+                # Envia o relatório de aprendizado apenas uma vez no dia
+                if last_report_date != now.date():
+                    try:
+                        from telegram_handler import send_daily_learning_report
+                        send_daily_learning_report()
+                        last_report_date = now.date()
+                    except Exception as e:
+                        logger.error(f"Erro ao enviar relatório diário: {e}")
 
                 time.sleep(60)
                 continue

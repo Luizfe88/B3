@@ -37,6 +37,7 @@ if bot:  # Só registra handlers se o bot foi criado
 /health         → Latência, memória e status do sistema
 /proximoevento  → Próximo evento econômico importante
 /blackout ou /news → Status de blackout por notícia
+/aprendizado    → Relatório Diário de Aprendizado do Bot
 
 ℹ️ Bot opera automaticamente na B3.
         """
@@ -122,6 +123,10 @@ if bot:  # Só registra handlers se o bot foi criado
 
         bot.reply_to(message, status, parse_mode="HTML")
 
+    @bot.message_handler(commands=["aprendizado"])
+    def handle_aprendizado(message):
+        bot.reply_to(message, build_learning_report(), parse_mode="HTML")
+
     @bot.message_handler(commands=["health"])
     def handle_health(message):
         """
@@ -186,6 +191,62 @@ def send_telegram_alert(message_text: str, parse_mode="HTML"):
     except Exception as e:
         logger.error(f"Erro ao enviar mensagem Telegram: {e}")
         return False
+
+
+def build_learning_report() -> str:
+    """Constrói o texto do relatório diário do Adaptive Intelligence"""
+    try:
+        from adaptive_intelligence import adaptive_intelligence
+        report = adaptive_intelligence.get_performance_report()
+
+        if report.get("status") != "Ativo":
+            return f"❌ <b>Relatório de Aprendizado</b>\n\nStatus: {report.get('status', 'Inativo')}"
+
+        params = report.get("current_parameters", {})
+        metrics = report.get("performance_metrics", {})
+        state = report.get("market_state", {})
+
+        last_adj_str = report.get("last_adjustment", "")
+        last_adj_time = last_adj_str.split("T")[1][:8] if "T" in last_adj_str else last_adj_str
+
+        msg = (
+            f"🧠 <b>XP3 PRO - APRENDIZADO DIÁRIO</b>\n\n"
+            f"🔧 Ajustes realizados hoje: <b>{report.get('total_adjustments', 0)}</b>\n"
+            f"⏰ Último ajuste: {last_adj_time}\n\n"
+            f"📊 <b>Métricas de Desempenho (Adaptive)</b>\n"
+            f"• Winrate 24h: {metrics.get('avg_winrate_24h', 0):.1%}\n"
+            f"• Tendência WR: {metrics.get('winrate_trend', '')}\n"
+            f"• Sharpe 4h: {metrics.get('avg_sharpe_4h', 0):.2f}\n\n"
+            f"⚙️ <b>Parâmetros em Vigor</b>\n"
+            f"• Confiança ML: {params.get('ml_confidence_threshold', 0):.2f}\n"
+            f"• Kelly Mult: {params.get('kelly_fraction_multiplier', 0):.2f}x\n"
+            f"• Spread Limite: {params.get('spread_filter_multiplier', 0):.2f}x\n\n"
+            f"🌍 <b>Leitura de Mercado</b>\n"
+            f"• Volatilidade: {state.get('volatility_level', '')}\n"
+            f"• Correlação: {state.get('correlation_level', '')}\n\n"
+            f"🔮 <b>Lições para o Próximo Pregão</b>\n"
+        )
+        
+        projections = report.get("tomorrow_projections", [])
+        if projections:
+            for p in projections:
+                msg += f"• {p}\n"
+        else:
+            msg += "• Aguardando mais dados para projeções consistentes.\n"
+            
+        return msg
+    except Exception as e:
+        logger.error(f"Erro ao construir relatório de aprendizado: {e}")
+        return f"❌ Erro ao gerar relatório: {str(e)}"
+
+
+def send_daily_learning_report():
+    """
+    Chamado no final do dia para enviar o relatório automático.
+    """
+    logger.info("Enviando relatório diário de aprendizado para o Telegram...")
+    msg = build_learning_report()
+    send_telegram_alert(msg)
 
 
 def start_telegram_polling():

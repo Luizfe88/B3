@@ -67,8 +67,27 @@ class AdaptiveIntelligence:
         self.performance_window = deque(maxlen=48)  # Últimas 48 horas
 
     def _load_default_params(self) -> AdaptiveParameters:
-        """Carrega parâmetros padrão do config"""
+        """Carrega parâmetros salvos na última sessão ou os padrões do config"""
         cfg = config.get_config()
+        
+        # Tenta carregar do banco para manter "memória" de dias anteriores
+        try:
+            last_config = database.get_latest_adaptive_config()
+            if last_config:
+                logger.info("🧠 Carregando memória da última sessão do Adaptive Intelligence...")
+                return AdaptiveParameters(
+                    ml_confidence_threshold=last_config.get("ml_threshold", cfg["ml_model"]["confidence_base"]),
+                    kelly_fraction_multiplier=last_config.get("kelly_multiplier", 1.0),
+                    max_losses_per_symbol=last_config.get("max_losses_per_symbol", cfg["risk_limits"]["max_losses_per_symbol_default"]),
+                    spread_filter_multiplier=last_config.get("spread_multiplier", cfg["entry_filters"]["spread_filter"]["max_spread_multiplier"]),
+                    anti_chop_threshold=cfg["entry_filters"]["anti_chop_filter"]["consecutive_losses_to_activate"],
+                    panic_volume_threshold=2.0,
+                    panic_adx_threshold=40.0,
+                )
+        except Exception as e:
+            logger.error(f"⚠️ Erro ao buscar memória do banco. Usando padrões: {e}")
+
+        logger.info("🧠 Inicializando Adaptive Intelligence com valores padrão do config.yaml")
         return AdaptiveParameters(
             ml_confidence_threshold=cfg["ml_model"]["confidence_base"],
             kelly_fraction_multiplier=1.0,
@@ -573,12 +592,53 @@ class AdaptiveIntelligence:
                     ),
                     "trend_strength": df["trend_strength"].iloc[-1],
                 },
+                "tomorrow_projections": self._get_tomorrow_projections(df),
             }
 
         except Exception as e:
             logger.error(f"Erro ao gerar relatório: {e}")
             return {"status": "Erro", "error": str(e)}
 
+    def _get_tomorrow_projections(self, df: pd.DataFrame) -> List[str]:
+        """Baseado no fechamento final do dia, projeta lições práticas para o dia seguinte"""
+        projections = []
+        try:
+            # Avaliação de Winrate Geral
+            current_wr = df["winrate_24h"].iloc[-1]
+            if current_wr < 0.40:
+                projections.append("📉 Winrate muito baixo hoje. Amanhã o bot iniciará com filtros de Spread mais rígidos e tamanho de lote reduzido para se proteger.")
+            elif current_wr > 0.65:
+                projections.append("🎯 Alta taxa de acertos hoje. Amanhã a confiança do ML será flexibilizada para capturar mais oportunidades desde a abertura.")
+
+            # Avaliação de Tendência/Deterioração Intradiária
+            wr_trend = "Subindo" if df["winrate_4h"].iloc[-10:].mean() > df["winrate_4h"].iloc[-20:-10].mean() else "Descendo"
+            if wr_trend == "Descendo" and current_wr >= 0.40:
+                projections.append("⚠️ O mercado azedou da tarde para o final. Cautela com falsos rompimentos na abertura do próximo pregão.")
+
+            # Avaliação de Volatilidade
+            current_vol = df["market_volatility"].iloc[-1]
+            avg_vol = df["market_volatility"].mean()
+            if current_vol > avg_vol * 1.5:
+                projections.append("⚡ Mercado fechou altamente volátil. O Stop-Loss dinâmico precisará começar mais longo amanhã para evitar violinações no ruído matinal.")
+            elif current_vol < avg_vol * 0.7:
+                projections.append("😴 Mercado fechou letárgico. Aumentarei agressividade dos parâmetros de 'Mean Reversion' (Retorno à Média) amanhã cedo.")
+
+            # Avaliação de Sharpe
+            sharpe = df["sharpe_4h"].iloc[-1]
+            if sharpe > 2.0:
+                projections.append("🥇 Relação de Risco/Retorno excelente garantida hoje. Manterei o ritmo atual de alvos sem estrangular o Take-Profit.")
+            elif sharpe < 0.5:
+                projections.append("🐢 O Risco/Retorno não foi dos melhores. Amanhã focarei em encurtar os alvos se o fluxo das ordens for lento.")
+
+            # Default
+            if not projections:
+                projections.append("⚖️ Dia de dinâmica equilibrada. Seguiremos a parametrização padrão base amanhã a menos que o fluxo mude bruscamente.")
+
+            return projections
+        except Exception as e:
+            logger.error(f"Erro ao projetar lições do dia seguinte: {e}")
+            return ["⚠️ Não foi possível determinar projeções claras devido à instabilidade dos dados de hoje."]
 
 # Instância global
 adaptive_intelligence = AdaptiveIntelligence()
+
