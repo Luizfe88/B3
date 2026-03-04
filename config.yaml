@@ -102,3 +102,9 @@ adaptive_intelligence:
     low_winrate_threshold: 0.40                # Winrate crítico (< 40%)
     high_volatility_threshold: 0.05             # Volatilidade extrema (> 5%)
     daily_drawdown_threshold: 0.8               # 80% do limite diário
+
+# -- TELEGRAM NOTIFICATIONS --
+telegram:
+  enabled: True
+  bot_token: "" # Insira seu Bot Token aqui ou no .env
+  chat_id: ""   # Insira seu Chat ID aqui ou no .env

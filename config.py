@@ -6,6 +6,10 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Carrega variáveis de ambiente do .env
+load_dotenv()
 
 # Carrega configuração única do config.yaml
 _CONFIG_PATH = Path(__file__).parent / "config.yaml"
@@ -116,6 +120,11 @@ ADAPTIVE_HIGH_VOLATILITY_THRESHOLD = config["adaptive_intelligence"][
 ADAPTIVE_DAILY_DRAWDOWN_THRESHOLD = config["adaptive_intelligence"][
     "emergency_triggers"
 ]["daily_drawdown_threshold"]
+
+# Telegram configuration (Prioridade para .env)
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or config.get("telegram", {}).get("bot_token")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or config.get("telegram", {}).get("chat_id")
+ENABLE_TELEGRAM_NOTIF = os.getenv("ENABLE_TELEGRAM_NOTIF", "").lower() == "true" or config.get("telegram", {}).get("enabled", False)
 
 # Variáveis dinâmicas do sistema adaptativo
 ADAPTIVE_ML_THRESHOLD = ML_CONFIDENCE_BASE
