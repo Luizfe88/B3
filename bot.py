@@ -211,22 +211,30 @@ def main():
                         tick_info.last if tick_info and tick_info.last > 0 else (tick_info.bid if tick_info else candles["close"].iloc[-1])
                     )
 
-                    # 1.3 Ticks (Últimos 800 negócios - Hack do Futuro para Timezone & Compatibilidade API C)
-                    try:
-                        # Criamos um "Teto" no futuro para anular qualquer desvio de fuso horário
-                        future_target = datetime.now() + timedelta(days=1)
+                    # 1.3 Ticks (Últimos 800 negócios - Janela Fechada com Time do Servidor)
+                    last_tick = mt5.symbol_info_tick(symbol)
+                    if last_tick is not None:
+                        # 1. Ancoramos o tempo atual no relógio do servidor da corretora
+                        server_time = datetime.fromtimestamp(last_tick.time)
                         
-                        # Ao pedir dados do futuro, o MT5 entrega os últimos N ticks mais recentes
-                        # Usamos COPY_TICKS_TRADE para pegar apenas agressões reais (sem ruído de book)
-                        ticks_data = mt5.copy_ticks_from(
-                            symbol,
-                            future_target,
-                            800,
-                            mt5.COPY_TICKS_TRADE,
-                        )
-                        ticks = ticks_data if ticks_data is not None else []
-                    except Exception as e:
-                        logger.error(f"⚠️ Erro crítico na API C do MT5 ao buscar ticks para {symbol}: {e}")
+                        # 2. Criamos uma janela abrangente (últimas 2 horas reais da B3)
+                        start_time = server_time - timedelta(hours=2)
+                        end_time = server_time + timedelta(minutes=1)
+                        
+                        try:
+                            # 3. Puxamos negócios agressivos da janela fechada
+                            ticks_data = mt5.copy_ticks_range(symbol, start_time, end_time, mt5.COPY_TICKS_TRADE)
+                            
+                            # 4. Fatiamos apenas os últimos 800 (Foco no fluxo recente)
+                            if ticks_data is not None and len(ticks_data) > 0:
+                                ticks = ticks_data[-800:]
+                            else:
+                                ticks = []
+                                
+                        except Exception as e:
+                            logger.error(f"⚠️ Erro ao buscar ticks_range para {symbol}: {e}")
+                            ticks = []
+                    else:
                         ticks = []
 
                     # Dados Globais de Risco

@@ -76,7 +76,13 @@ class ExecutionEngine:
                  return False
             
             self._connected = True
-            logger.info(f"✅ Conectado ao MetaTrader 5 (Conta: {init_params.get('login')})")
+            account_info = mt5.account_info()
+            if account_info:
+                logger.info(
+                    f"✅ Conectado ao MetaTrader 5 (Conta: {account_info.login} | {account_info.company})"
+                )
+            else:
+                logger.info("✅ Conectado ao MetaTrader 5")
             return True
 
     def is_connected(self) -> bool:
