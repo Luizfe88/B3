@@ -77,6 +77,11 @@ def main():
     from telegram_handler import start_telegram_polling
     telegram_thread = threading.Thread(target=start_telegram_polling, daemon=True, name="TelegramPollingThread")
     telegram_thread.start()
+    
+    # Inicia o monitoramento da inteligência adaptativa
+    from adaptive_intelligence import adaptive_intelligence
+    if config.get_config().get("adaptive_intelligence", {}).get("enabled", False):
+        adaptive_intelligence.start_monitoring()
 
     execution = ExecutionEngine()
     if not execution.connect():

@@ -108,6 +108,17 @@ class AdaptiveIntelligence:
             return
 
         self.running = True
+        
+        # Faz uma coleta inicial imediata para não deixar os relatórios vazios
+        # ao rodar o bot (evitando ficar "Aguardando" até dar o primeiro tick de 15 min)
+        try:
+            initial_metrics = self._collect_current_metrics()
+            if initial_metrics:
+                self.metrics_history.append(initial_metrics)
+                logger.info("🧠 Adaptive Intelligence - Seed inicial coletado.")
+        except Exception as e:
+            logger.error(f"⚠️ Erro ao pré-carregar dados iniciais do Adaptive: {e}")
+
         self.adjustment_thread = threading.Thread(
             target=self._monitoring_loop, daemon=True
         )
@@ -145,22 +156,21 @@ class AdaptiveIntelligence:
         try:
             # Análise de trades recentes
             recent_trades = self._get_recent_trades(hours=24)
-            if len(recent_trades) < 5:
-                return None
+            # if len(recent_trades) < 5:
+            # Não aborta mais aqui para podermos pegar os dados de mercado mesmo sem trades.
 
             # Calcula métricas de performance
-            winrate_1h = self._calculate_winrate(recent_trades, hours=1)
-            winrate_4h = self._calculate_winrate(recent_trades, hours=4)
-            winrate_24h = self._calculate_winrate(recent_trades, hours=24)
+            winrate_1h = self._calculate_winrate(recent_trades, hours=1) if len(recent_trades) > 0 else 0.0
+            winrate_4h = self._calculate_winrate(recent_trades, hours=4) if len(recent_trades) > 0 else 0.0
+            winrate_24h = self._calculate_winrate(recent_trades, hours=24) if len(recent_trades) > 0 else 0.0
 
             sharpe_1h = self._calculate_sharpe(recent_trades, hours=1)
             sharpe_4h = self._calculate_sharpe(recent_trades, hours=4)
             sharpe_24h = self._calculate_sharpe(recent_trades, hours=24)
 
             # Análise de trade duration
-            avg_duration = np.mean(
-                [t.get("duration_minutes", 0) for t in recent_trades[-50:]]
-            )
+            durations = [t.get("duration_minutes", 0) for t in recent_trades[-50:]]
+            avg_duration = float(np.mean(durations)) if durations else 0.0
 
             # Análise de SL/TP
             sl_distances = []
@@ -509,10 +519,11 @@ class AdaptiveIntelligence:
     def _calculate_trend_strength(self) -> float:
         """Calcula força da tendência de mercado"""
         try:
-            # Analisa ADX do IBOV como proxy de tendência
-            ibov_adx = utils.get_ibov_adx(period=14)
-            return ibov_adx / 100.0  # Normaliza para 0-1
-
+            # Analisa ADX do IBOV como proxy de tendência se existir, senão default
+            if hasattr(utils, "get_ibov_adx"):
+                ibov_adx = utils.get_ibov_adx(period=14)
+                return ibov_adx / 100.0  # Normaliza para 0-1
+            return 0.5
         except Exception as e:
             logger.error(f"Erro ao calcular força da tendência: {e}")
             return 0.5
@@ -557,42 +568,47 @@ class AdaptiveIntelligence:
     def get_performance_report(self) -> Dict:
         """Gera relatório de performance do sistema adaptativo"""
         try:
-            if not self.metrics_history:
-                return {"status": "Sem dados suficientes"}
+            df = pd.DataFrame([vars(m) for m in self.metrics_history]) if self.metrics_history else pd.DataFrame()
 
-            df = pd.DataFrame([vars(m) for m in self.metrics_history])
+            if df.empty:
+                avg_winrate = 0.0
+                avg_sharpe = 0.0
+                avg_vol = 0.0
+                wr_trend = "Aguardando trades"
+                vol_level = "Aguardando"
+                corr_level = "Aguardando"
+                tr_strength = 0.0
+            else:
+                avg_winrate = df["winrate_24h"].mean()
+                avg_sharpe = df["sharpe_4h"].mean()
+                avg_vol = df["market_volatility"].mean()
+                
+                if len(df) >= 20:
+                    wr_trend = "Subindo" if df["winrate_4h"].iloc[-10:].mean() > df["winrate_4h"].iloc[-20:-10].mean() else "Descendo"
+                else:
+                    wr_trend = "Estável"
+                    
+                vol_level = "Alto" if df["market_volatility"].iloc[-1] > df["market_volatility"].mean() * 1.2 else "Normal"
+                corr_level = "Alto" if df["correlation_strength"].iloc[-1] > 0.7 else "Normal"
+                tr_strength = df["trend_strength"].iloc[-1]
 
             return {
-                "status": "Ativo",
+                "status": "Ativo" if self.running else "Ativo (Aguardando Trades)",
                 "total_adjustments": len(self.parameter_history),
                 "current_parameters": vars(self.current_params),
                 "performance_metrics": {
-                    "avg_winrate_24h": df["winrate_24h"].mean(),
-                    "avg_sharpe_4h": df["sharpe_4h"].mean(),
-                    "avg_volatility": df["market_volatility"].mean(),
-                    "winrate_trend": (
-                        "Subindo"
-                        if df["winrate_4h"].iloc[-10:].mean()
-                        > df["winrate_4h"].iloc[-20:-10].mean()
-                        else "Descendo"
-                    ),
+                    "avg_winrate_24h": avg_winrate,
+                    "avg_sharpe_4h": avg_sharpe,
+                    "avg_volatility": avg_vol,
+                    "winrate_trend": wr_trend,
                 },
                 "last_adjustment": self.last_adjustment.isoformat(),
                 "market_state": {
-                    "volatility_level": (
-                        "Alto"
-                        if df["market_volatility"].iloc[-1]
-                        > df["market_volatility"].mean() * 1.2
-                        else "Normal"
-                    ),
-                    "correlation_level": (
-                        "Alto"
-                        if df["correlation_strength"].iloc[-1] > 0.7
-                        else "Normal"
-                    ),
-                    "trend_strength": df["trend_strength"].iloc[-1],
+                    "volatility_level": vol_level,
+                    "correlation_level": corr_level,
+                    "trend_strength": tr_strength,
                 },
-                "tomorrow_projections": self._get_tomorrow_projections(df),
+                "tomorrow_projections": self._get_tomorrow_projections(df) if not df.empty else ["Aguardando fechamento de novos trades para projetar lições."],
             }
 
         except Exception as e:
