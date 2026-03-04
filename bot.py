@@ -73,6 +73,11 @@ def main():
     logger.info("🚀 Iniciando TradingAgents-B3 Framework...")
 
     # 1. Inicialização de Infraestrutura
+    # Inicia a thread do Telegram para ouvir comandos em background
+    from telegram_handler import start_telegram_polling
+    telegram_thread = threading.Thread(target=start_telegram_polling, daemon=True, name="TelegramPollingThread")
+    telegram_thread.start()
+
     execution = ExecutionEngine()
     if not execution.connect():
         logger.critical(

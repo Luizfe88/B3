@@ -125,7 +125,13 @@ if bot:  # Só registra handlers se o bot foi criado
 
     @bot.message_handler(commands=["aprendizado"])
     def handle_aprendizado(message):
-        bot.reply_to(message, build_learning_report(), parse_mode="HTML")
+        msg = build_learning_report()
+        bot.reply_to(message, msg, parse_mode="HTML")
+        # Também gera o .txt sob demanda
+        save_file_path = save_learning_report_to_file(msg)
+        if save_file_path:
+            # Envia a mensagem com o path do log
+            bot.reply_to(message, f"📁 Relatório detalhado também foi salvo em: `{save_file_path}`", parse_mode="Markdown")
 
     @bot.message_handler(commands=["health"])
     def handle_health(message):
@@ -239,6 +245,24 @@ def build_learning_report() -> str:
         logger.error(f"Erro ao construir relatório de aprendizado: {e}")
         return f"❌ Erro ao gerar relatório: {str(e)}"
 
+def save_learning_report_to_file(msg: str):
+    import os
+    from datetime import datetime
+    try:
+        os.makedirs("relatorios", exist_ok=True)
+        filename = f"relatorios/aprendizado_{datetime.now().strftime('%Y-%m-%d')}.txt"
+        
+        # Remove tags HTML para salvar no txt
+        import re
+        clean_msg = re.sub(r'<[^>]+>', '', msg)
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(clean_msg)
+        logger.info(f"Relatório de aprendizado salvo em {filename}")
+        return filename
+    except Exception as e:
+        logger.error(f"Erro ao salvar relatório de aprendizado no disco: {e}")
+        return None
 
 def send_daily_learning_report():
     """
@@ -246,6 +270,7 @@ def send_daily_learning_report():
     """
     logger.info("Enviando relatório diário de aprendizado para o Telegram...")
     msg = build_learning_report()
+    save_learning_report_to_file(msg)
     send_telegram_alert(msg)
 
 
