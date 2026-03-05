@@ -60,10 +60,22 @@ class AdaptiveIntelligence:
     def __init__(self):
         self.metrics_history = deque(maxlen=1000)  # Últimas 1000 medições
         self.parameter_history = deque(maxlen=100)  # Últimos 100 ajustes
+        
+        try:
+            recent_adjs = database.get_recent_adaptive_adjustments(limit=100)
+            self.parameter_history.extend(recent_adjs)
+        except Exception as e:
+            logger.error(f"Erro ao carregar histórico de ajustes: {e}")
+            
         self.current_params = self._load_default_params()
         self.adjustment_thread = None
         self.running = False
-        self.last_adjustment = datetime.now()
+        
+        if self.parameter_history:
+            self.last_adjustment = self.parameter_history[-1].get("timestamp", datetime.now())
+        else:
+            self.last_adjustment = datetime.now()
+            
         self.performance_window = deque(maxlen=48)  # Últimas 48 horas
 
     def _load_default_params(self) -> AdaptiveParameters:

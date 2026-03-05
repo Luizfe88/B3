@@ -479,6 +479,122 @@ def get_latest_adaptive_config() -> dict:
         conn.close()
 
 
+def _ensure_adaptive_adjustments_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS adaptive_adjustments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME NOT NULL,
+            old_parameters TEXT,
+            new_parameters TEXT,
+            recommendations TEXT,
+            market_conditions TEXT
+        )
+        """
+    )
+    conn.commit()
+
+
+def save_adaptive_adjustment(adjustment_data: dict) -> None:
+    """Salva um histórico completo de ajuste de parâmetros."""
+    import json
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_adaptive_adjustments_table(conn)
+        ts = adjustment_data.get("timestamp") or datetime.now()
+        if isinstance(ts, datetime):
+            ts_value = ts.isoformat(sep=" ", timespec="seconds")
+        else:
+            ts_value = str(ts)
+
+        old_params = json.dumps(adjustment_data.get("old_parameters", {}))
+        new_params = json.dumps(adjustment_data.get("new_parameters", {}))
+        recommendations = json.dumps(adjustment_data.get("recommendations", {}))
+        market_conditions = json.dumps(adjustment_data.get("market_conditions", {}))
+
+        conn.execute(
+            """
+            INSERT INTO adaptive_adjustments
+            (timestamp, old_parameters, new_parameters, recommendations, market_conditions)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (ts_value, old_params, new_params, recommendations, market_conditions),
+        )
+        conn.commit()
+
+        # Também salva no adaptive_config para que os valores padrão sejam atualizados
+        new_p = adjustment_data.get("new_parameters", {})
+        save_adaptive_config({
+            "timestamp": ts_value,
+            "ml_threshold": new_p.get("ml_confidence_threshold", 0.0),
+            "kelly_multiplier": new_p.get("kelly_fraction_multiplier", 0.0),
+            "spread_multiplier": new_p.get("spread_filter_multiplier", 0.0),
+            "max_losses_per_symbol": new_p.get("max_losses_per_symbol", 0)
+        })
+
+    except Exception as e:
+        logger.error(f"Erro ao salvar adaptive_adjustment: {e}")
+    finally:
+        conn.close()
+
+
+def get_recent_adaptive_adjustments(limit: int = 100) -> list:
+    """Busca o histórico mais recente de ajustes do Adaptive Intelligence."""
+    import json
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        _ensure_adaptive_adjustments_table(conn)
+        df = pd.read_sql_query(
+            f"SELECT * FROM adaptive_adjustments ORDER BY timestamp ASC LIMIT {limit}",
+            conn
+        )
+        
+        if len(df) == 0:
+            return []
+            
+        adjustments = []
+        for _, row in df.iterrows():
+            try:
+                # Convert string format isoformat to datetime
+                ts_value = row["timestamp"]
+                # Replace ' ' with 'T' before python 3.11 if it comes that way, 
+                # but fromisoformat handles space separated in 3.11+
+                try:
+                    ts = datetime.fromisoformat(ts_value)
+                except ValueError:
+                    # quick fix
+                    ts = datetime.fromisoformat(ts_value.replace(" ", "T"))
+
+                adj = {
+                    "timestamp": ts,
+                    "old_parameters": json.loads(row["old_parameters"] or "{}"),
+                    "new_parameters": json.loads(row["new_parameters"] or "{}"),
+                    "recommendations": json.loads(row["recommendations"] or "{}"),
+                    "market_conditions": json.loads(row["market_conditions"] or "{}")
+                }
+                
+                # Adapta ao formato que parameter_history usa
+                adj_format = {
+                    "timestamp": adj["timestamp"],
+                    "old_params": adj["old_parameters"],
+                    "new_params": adj["new_parameters"],
+                    "recommendations": adj["recommendations"]
+                }
+                
+                adjustments.append(adj_format)
+            except Exception as loop_e:
+                logger.error(f"Erro ao parsear row de adjustment: {loop_e}")
+                
+        return adjustments
+    except Exception as e:
+        logger.error(f"Erro ao buscar recentes adaptive_adjustments: {e}")
+        return []
+    finally:
+        conn.close()
+
+
 def get_trades_since(start_time: datetime):
     init_db()
     migrate_db()
