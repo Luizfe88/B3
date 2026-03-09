@@ -660,7 +660,8 @@ def sync_trades_from_mt5():
     logger.info("🔄 Iniciando sincronização MT5 -> Database...")
     
     # Inicializa MT5 se necessário
-    if not mt5.initialize():
+    import utils
+    if not utils.safe_mt5_initialize():
         init_params = {
             "path": getattr(config, "MT5_TERMINAL_PATH", None),
             "login": int(config.MT5_ACCOUNT) if config.MT5_ACCOUNT else 0,

@@ -275,12 +275,26 @@ class RiskManager:
         # Por regra do sistema xp3, operamos em lotes de 100
         lot_size = int(units // 100) * 100
 
+        # --- MANDATORY SAFETY CAP: 10% of equity (Priority 1) ---
+        # Kelly may hallucinate, but the bankroll must be protected.
+        max_position_value = account_balance * 0.10
+        current_value = lot_size * entry_price
+        
+        if current_value > max_position_value:
+            new_lot_size = int((max_position_value / entry_price) // 100) * 100
+            logger.warning(
+                f"🛡️ [RISK CAP] Posição em {symbol} reduzida de {lot_size} para {new_lot_size} "
+                f"para respeitar o teto de 10% da conta (R${max_position_value:.2f})."
+            )
+            lot_size = new_lot_size
+        # -------------------------------------------------------
+
         # Segurança final extra: A posição total (financeiro total investido)
         # não deve ultrapassar 4x o capital para daytrade alavancado normal.
         exposure_limit_money = account_balance * 4.0
         max_lot_exposure = int(exposure_limit_money / entry_price)
 
-        final_lot_size = max(100, min(lot_size, max_lot_exposure))
+        final_lot_size = max(0, min(lot_size, max_lot_exposure))
 
         logger.info(
             f"📏 Sizing dinâmico {symbol} {side}: {final_lot_size} ações "
@@ -297,9 +311,13 @@ class RiskManager:
             end_date = datetime.now()
             start_date = end_date - timedelta(days=days)
 
-            trades = database.get_trades_by_symbol_and_date(
-                symbol, start_date, end_date
-            )
+            trades = []
+            if hasattr(database, "get_trades_by_symbol_and_date"):
+                trades = database.get_trades_by_symbol_and_date(
+                    symbol, start_date, end_date
+                )
+            else:
+                logger.debug("⚠️ database.get_trades_by_symbol_and_date não disponível. Usando fallback.")
 
             if not trades:
                 # Retorna valores padrão conservadores

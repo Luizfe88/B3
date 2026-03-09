@@ -518,13 +518,13 @@ def get_asset_class_config(symbol: str) -> dict:
     }
 
 
-def round_to_tick(price: float, tick_size: float) -> float:
+def round_to_tick(price: float, tick_size: float = 0.01) -> float:
+    """Arredonda o preço para o tick size (B3 Padrão = R$ 0,01)"""
     try:
-        if tick_size <= 0:
-            return float(price)
-        return float(round(price / tick_size) * tick_size)
+        t_size = tick_size if tick_size > 0 else 0.01
+        return float(round(price / t_size) * t_size)
     except Exception:
-        return float(price)
+        return float(round(price, 2))
 
 
 sector_weights: Dict[str, Dict[str, float]] = {}
@@ -600,6 +600,73 @@ STOCK_UNITS_WHITELIST = {
 # 🚀 FUNÇÕES DE ACESSO A DADOS (HARDENED)
 # =========================================================
 
+def safe_mt5_initialize() -> bool:
+    """
+    Centralized and safe MT5 initialization.
+    Enforces terminal path, account, password and server from config.
+    """
+    try:
+        # 1. Se já estiver inicializado, verifica se é o terminal/conta correto
+        terminal = mt5.terminal_info()
+        if terminal is not None:
+            current_path = getattr(terminal, "path", "").lower().replace("/", "\\")
+            config_path = str(getattr(config, "MT5_TERMINAL_PATH", "")).lower().replace("/", "\\")
+            
+            # Se o caminho for diferente (ignorando case e separadores), dá shutdown
+            if config_path and config_path not in current_path and "metatrader 5" in current_path:
+                logger.warning(f"🔄 Terminal incorreto detectado ({current_path}). Reiniciando para {config_path}...")
+                mt5.shutdown()
+                time.sleep(1.0)
+            else:
+                # Mesmo terminal, verifica se a conta está correta (se configurada)
+                acc = mt5.account_info()
+                target_acc = getattr(config, "MT5_ACCOUNT", None)
+                if acc and target_acc and int(acc.login) != int(target_acc):
+                    logger.warning(f"🔄 Conta incorreta detectada ({acc.login}). Reiniciando para conta {target_acc}...")
+                    mt5.shutdown()
+                    time.sleep(1.0)
+                elif terminal.connected:
+                    return True
+
+        # 2. Inicializa com os parâmetros do config
+        account = getattr(config, "MT5_ACCOUNT", 0)
+        try:
+            account = int(account) if account else 0
+        except (ValueError, TypeError):
+            account = 0
+
+        init_params = {
+            "path": getattr(config, "MT5_TERMINAL_PATH", None),
+            "login": account,
+            "password": str(getattr(config, "MT5_PASSWORD", "") or ""),
+            "server": str(getattr(config, "MT5_SERVER", "") or ""),
+            "timeout": 10000
+        }
+        
+        # Filtra parâmetros vazios/None
+        init_params = {k: v for k, v in init_params.items() if v is not None and v != ""}
+        
+        if not mt5.initialize(**init_params):
+            logger.error(f"❌ Falha crítica ao inicializar MT5: {mt5.last_error()}")
+            return False
+            
+        # 3. Log de confirmação
+        terminal = mt5.terminal_info()
+        acc = mt5.account_info()
+        
+        if terminal:
+            path_show = getattr(terminal, 'path', 'N/A')
+            if acc:
+                logger.info(f"✅ Conectado ao MT5: {path_show} | Conta: {acc.login} ({acc.company})")
+            else:
+                logger.info(f"✅ Conectado ao MT5: {path_show} (Sem login efetuado)")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Erro em safe_mt5_initialize: {e}")
+        return False
+
+
 def ensure_mt5_connected(force: bool = False):
     """Garante que o MT5 esteja inicializado e conectado com hard reset se necessário"""
     try:
@@ -609,39 +676,11 @@ def ensure_mt5_connected(force: bool = False):
                 return True
 
         logger.warning(f"🔄 {'Forçando' if force else 'Detectada'} (re)inicialização do MT5...")
-        mt5.shutdown()
-        time.sleep(1.0)
+        if force:
+            mt5.shutdown()
+            time.sleep(1.0)
         
-        # Usa parâmetros do config para garantir conexão correta
-        # Login precisa ser int
-        account = getattr(config, "MT5_ACCOUNT", 0)
-        try:
-            account = int(account)
-        except (ValueError, TypeError):
-            account = 0
-
-        init_params = {
-            "path": getattr(config, "MT5_TERMINAL_PATH", None),
-            "login": account,
-            "password": getattr(config, "MT5_PASSWORD", ""),
-            "server": getattr(config, "MT5_SERVER", "")
-        }
-        
-        # Filtra parâmetros vazios para permitir fallback do MT5
-        init_params = {k: v for k, v in init_params.items() if v}
-        
-        if not mt5.initialize(**init_params):
-            logger.error(f"❌ Falha crítica ao inicializar MT5: {mt5.last_error()}")
-            return False
-        
-        # Verifica novamente após inicializar
-        terminal = mt5.terminal_info()
-        if terminal is None or not getattr(terminal, "connected", False):
-            logger.error("❌ MT5 inicializado mas continua relatando desconectado.")
-            return False
-            
-        logger.info("✅ Conexão MT5 restabelecida com sucesso.")
-        return True
+        return safe_mt5_initialize()
     except Exception as e:
         logger.error(f"Erro ao verificar conexão MT5: {e}")
         return False
@@ -5633,7 +5672,7 @@ def validate_stops_level(symbol: str, side: str, price: float, sl: float, tp: fl
     """
     info = mt5.symbol_info(symbol)
     if not info or price <= 0:
-        return sl, tp
+        return round_to_tick(sl, 0.01), round_to_tick(tp, 0.01)
 
     stops_level = getattr(info, "trade_stops_level", 0) or 0
     point = getattr(info, "point", 0.01) or 0.01
@@ -5673,15 +5712,10 @@ def validate_stops_level(symbol: str, side: str, price: float, sl: float, tp: fl
                 f"⚠️ [{symbol}] SL ajustado pelo stops_level: {old_sl:.4f} → {sl:.4f} "
                 f"(min_distance={min_distance:.4f}, stops_level={stops_level})"
             )
-        # TP deve estar pelo menos min_distance ABAIXO do preço
-        min_tp = price - min_distance
-        if tp > min_tp:
-            old_tp = tp
-            tp = round((min_tp - tick_size) / tick_size) * tick_size
-            logger.warning(
-                f"⚠️ [{symbol}] TP ajustado pelo stops_level: {old_tp:.4f} → {tp:.4f}"
-            )
-
+    # Arredondamento final obrigatório para evitar Code 10016 na B3
+    sl = round_to_tick(sl, tick_size)
+    tp = round_to_tick(tp, tick_size)
+    
     return sl, tp
 
 

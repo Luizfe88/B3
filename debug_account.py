@@ -6,7 +6,8 @@ def debug_account():
     print("=== Diagnóstico de Conta MT5 ===")
     
     # Tenta inicializar
-    if not mt5.initialize():
+    import utils
+    if not utils.safe_mt5_initialize():
         print(f"❌ Falha no mt5.initialize(): {mt5.last_error()}")
         return
 

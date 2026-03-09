@@ -45,21 +45,8 @@ class ExecutionEngine:
                 if info and info.connected:
                     return True
 
-            import config
-            mt5_acc = getattr(config, "MT5_ACCOUNT", 0)
-            init_params = {
-                "path": getattr(config, "MT5_TERMINAL_PATH", None),
-                "login": int(mt5_acc) if mt5_acc is not None else 0,
-                "password": str(getattr(config, "MT5_PASSWORD", "") or ""),
-                "server": str(getattr(config, "MT5_SERVER", "") or ""),
-                "timeout": 10000
-            }
-            
-            # Filtra None (MT5_TERMINAL_PATH pode ser None)
-            init_params = {k: v for k, v in init_params.items() if v is not None}
-
-            if not mt5.initialize(**init_params):
-                logger.error(f"❌ Falha ao inicializar MT5: {mt5.last_error()}")
+            import utils
+            if not utils.safe_mt5_initialize():
                 self._connected = False
                 return False
             
@@ -78,13 +65,6 @@ class ExecutionEngine:
                  return False
             
             self._connected = True
-            account_info = mt5.account_info()
-            if account_info:
-                logger.info(
-                    f"✅ Conectado ao MetaTrader 5 (Conta: {account_info.login} | {account_info.company})"
-                )
-            else:
-                logger.info("✅ Conectado ao MetaTrader 5")
             return True
 
     def is_connected(self) -> bool:
@@ -328,25 +308,47 @@ class ExecutionEngine:
         return slices * (N / np.sum(slices)) if np.sum(slices) != 0 else np.array([total_volume])
 
     def execute_advanced(self, symbol: str, side: OrderSide, total_volume: float, duration_min: int, comment: str):
-        """Executa ordem fatiada (VWAP/TWAP) via thread separada."""
+        """Executa ordem fatiada (VWAP/TWAP) via thread separada para não bloquear o bot."""
         def _task():
-            logger.info(f"🚀 Iniciando execução avançada {symbol} | Vol: {total_volume}")
-            slices_count = max(1, duration_min)
-            interval = 60
-            slice_vol = total_volume / slices_count
-            
-            for i in range(slices_count):
-                if i > 0: time.sleep(interval)
-                import utils
-                norm_vol = utils.normalize_volume(symbol, slice_vol)
-                if norm_vol <= 0: continue
+            try:
+                logger.info(f"🚀 [ASYNC SLICE] Iniciando execução {symbol} | Total: {total_volume} | Duração: {duration_min}m")
+                slices_count = max(1, duration_min)
+                interval = 60 # 1 minuto entre fatias
+                slice_vol = total_volume / slices_count
                 
-                tick = mt5.symbol_info_tick(symbol)
-                price = tick.ask if side == OrderSide.BUY else tick.bid
-                order = OrderParams(symbol=symbol, side=side, volume=norm_vol, price=price, comment=f"{comment}_S{i+1}")
-                self.send_order(order)
+                for i in range(slices_count):
+                    # No primeiro lote envia na hora, nos demais aguarda o intervalo
+                    if i > 0: 
+                        time.sleep(interval)
+                    
+                    import utils
+                    norm_vol = utils.normalize_volume(symbol, slice_vol)
+                    if norm_vol <= 0: continue
+                    
+                    # Refresh de cotação para garantir preço justo em cada fatia
+                    tick = mt5.symbol_info_tick(symbol)
+                    if not tick:
+                        logger.warning(f"⚠️ [SLICE] Falha ao obter tick para {symbol} na fatia {i+1}")
+                        continue
+                        
+                    price = tick.ask if side == OrderSide.BUY else tick.bid
+                    order = OrderParams(
+                        symbol=symbol, 
+                        side=side, 
+                        volume=norm_vol, 
+                        price=price, 
+                        comment=f"{comment}_S{i+1}"
+                    )
+                    
+                    logger.info(f"📤 [SLICE] Enviando fatia {i+1}/{slices_count} de {symbol} Vol: {norm_vol}")
+                    self.send_order(order)
+                
+                logger.info(f"✅ [ASYNC SLICE] Execução avançada de {symbol} finalizada.")
+            except Exception as e:
+                logger.error(f"❌ [SLICE ERROR] Erro na thread de execução para {symbol}: {e}")
         
-        threading.Thread(target=_task, daemon=True).start()
+        # Daemon=True garante que se o bot morrer, a thread morre junto
+        threading.Thread(target=_task, daemon=True, name=f"Slicing_{symbol}").start()
 
     def execute_smart_order(self, symbol: str, side: OrderSide, volume: float, price: float, sl: float, tp: float, comment: str):
         """Decide entre execução direta ou fatiada."""
