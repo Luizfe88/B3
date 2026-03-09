@@ -6,6 +6,7 @@ logger = logging.getLogger("RiskManagementTeam")
 import config
 import pandas as pd
 from validation.permutation_test import PermutationValidator
+from calibration_manager import calibration_manager
 
 
 class RiskGuardian:
@@ -48,24 +49,36 @@ class RiskGuardian:
         # Interpret size_multiplier as multiplier of the BASE RISK (not of capital)
         proposed_size_multiplier = float(proposal.get("size_multiplier", 1.0))
 
-        # --- DYNAMIC KELLY SIZING ---
-        if getattr(config, "USE_KELLY_SIZING", True) and "probability" in proposal:
-            p = float(proposal["probability"])
+        # --- DYNAMIC KELLY SIZING (CALIBRATED) ---
+        if getattr(config, "USE_KELLY_SIZING", True):
+            # Tenta carregar parâmetros calibrados (Histórico real + Optuna)
+            calib = calibration_manager.get_calibrated_params(symbol)
+            kelly_data = calib.get("kelly", {})
+            
+            p = float(kelly_data.get("win_rate", proposal.get("probability", 0.55)))
             # b = proporção de ganho/perda (ratio avg_win/avg_loss)
-            # Tenta buscar do market_data ou usa default 2.0 (conservador para B3)
-            b = float(market_context.get("win_loss_ratio", 2.0))
+            b = float(kelly_data.get("avg_win", 0.015) / kelly_data.get("avg_loss", 0.012)) if kelly_data.get("avg_loss", 0.012) > 0 else 2.0
             
             kelly_size = self.calculate_kelly_size(p, b)
             if kelly_size > 0:
-                logger.info(f"📊 [{self.name}] Kelly Sizing: p={p:.2f}, b={b:.2f} -> f*={kelly_size:.2%}")
-                # O Kelly f* é o percentual do capital. 
-                # Como trabalhamos com size_multiplier sobre o base_risk (2%), 
-                # precisamos converter f* para esse multiplicador.
-                # Ex: se f* = 4% e base_risk = 2%, multiplier = 2.0
+                logger.info(f"📊 [{self.name}] Calibrated Kelly Sizing ({symbol}): p={p:.2%}, b={b:.2f} -> f*={kelly_size:.2%}")
+                # f* é o percentual do capital.
+                # Como o bot usa size_multiplier sobre o base_risk (ex: 2%), convertemos:
                 proposed_size_multiplier = kelly_size / base_risk_pct
+                
+                # --- ENFORCE 10% HARD CAP ---
+                # Se f* > 10%, limitamos a 10% do capital (exposição nominal)
+                # No sistema de multiplicador: multiplier = 0.10 / base_risk_pct
+                MAX_EXPOSURE_PCT = 0.10
+                max_multiplier = MAX_EXPOSURE_PCT / base_risk_pct
+                
+                if proposed_size_multiplier > max_multiplier:
+                    logger.warning(f"🛡️ [{self.name}] Kelly ({proposed_size_multiplier:.1f}x) excedeu Hard Cap de 10%. Limitando a {max_multiplier:.1f}x.")
+                    proposed_size_multiplier = max_multiplier
+                
                 proposal["size_multiplier"] = proposed_size_multiplier
                 proposal["kelly_adjusted"] = True
-        # -----------------------------
+        # -----------------------------------------
 
         # Calcula o risco efetivo desta proposta (por trade)
         effective_risk_pct = base_risk_pct * proposed_size_multiplier

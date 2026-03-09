@@ -1073,7 +1073,7 @@ def objective(trial, symbol, df, ml_model=None):
 
 
 def optimize_with_optuna(
-    symbol, df_train, n_trials=150, timeout=1500, base_slippage=0.001
+    symbol, df_train, n_trials=150, timeout=1500, base_slippage=0.001, basket_id=1
 ):
     # Ajuste de defaults para busca mais ampla
     if n_trials == 150:
@@ -1145,19 +1145,41 @@ def optimize_with_optuna(
 
     # ✅ Pass base_slippage through closure
     def objective_wrapper(trial):
+        # ✅ Ajuste de Ranges based on Basket ID
+        if basket_id == 0: # Cesta A: Alta Liquidez
+            vol_windows = [20, 50]
+            knn_ks = [5, 15]
+            eta_range = (0.1, 0.4)
+            ema_l_range = (30, 80)
+        elif basket_id == 2: # Cesta C: Baixa Liquidez
+            vol_windows = [100]
+            knn_ks = [30]
+            eta_range = (0.7, 1.0)
+            ema_l_range = (80, 200)
+        else: # Cesta B: Mid-Caps
+            vol_windows = [50, 100]
+            knn_ks = [15, 30]
+            eta_range = (0.4, 0.7)
+            ema_l_range = (50, 150)
+
         params = {
-            "ema_short": trial.suggest_int("ema_short", 5, 35),
-            "ema_long": trial.suggest_int("ema_long", 30, 120),
-            "rsi_low": trial.suggest_int("rsi_low", 20, 45),
+            "ema_short": trial.suggest_int("ema_short", 5, 45),
+            "ema_long": trial.suggest_int("ema_long", ema_l_range[0], ema_l_range[1]),
+            "rsi_low": trial.suggest_int("rsi_low", 15, 45),
             "rsi_high": trial.suggest_int("rsi_high", 55, 85),
             "adx_threshold": trial.suggest_float("adx_threshold", 5.0, 35.0, step=5.0),
             "use_adx": trial.suggest_categorical("use_adx", [True, False]),
             "sl_atr_multiplier": trial.suggest_float(
-                "sl_atr_multiplier", 1.2, 4.0, step=0.1
+                "sl_atr_multiplier", 1.2, 5.0, step=0.1
             ),
-            "tp_ratio": trial.suggest_float("tp_ratio", 1.0, 3.5, step=0.2),
+            "tp_ratio": trial.suggest_float("tp_ratio", 1.0, 4.0, step=0.2),
             "base_slippage": base_slippage,
             "enable_shorts": 1,
+            # ✅ NOVOS PARÂMETROS
+            "vol_window": trial.suggest_categorical("vol_window", vol_windows),
+            "knn_k": trial.suggest_categorical("knn_k", knn_ks),
+            "eta_aggression": trial.suggest_float("eta_aggression", eta_range[0], eta_range[1]),
+            "basket_id": basket_id
         }
         params["tp_mult"] = params["sl_atr_multiplier"] * params["tp_ratio"]
 

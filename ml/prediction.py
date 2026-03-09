@@ -54,7 +54,7 @@ class MLPredictor:
         except Exception as e:
             logger.error(f"❌ Erro ao carregar modelos: {e}")
 
-    def compute_indicators(self, df: pd.DataFrame) -> Dict[str, float]:
+    def compute_indicators(self, df: pd.DataFrame, vol_window: int = 20) -> Dict[str, float]:
         """Calcula indicadores técnicos necessários para as features."""
         if df.empty or len(df) < 30:
             return {}
@@ -76,8 +76,8 @@ class MLPredictor:
         atr = ta.volatility.average_true_range(high, low, close, window=14).iloc[-1]
         atr_pct = (atr / close.iloc[-1]) * 100
         
-        # Volume Ratio (Last vs Avg 20)
-        vol_avg = volume.rolling(20).mean().iloc[-1]
+        # Volume Ratio (Last vs Avg vol_window)
+        vol_avg = volume.rolling(vol_window).mean().iloc[-1]
         vol_ratio = volume.iloc[-1] / vol_avg if vol_avg > 0 else 1.0
         
         # Momentum (10 periods)
@@ -91,12 +91,13 @@ class MLPredictor:
         # MACD
         macd = ta.trend.macd(close).iloc[-1]
         
-        # Price vs VWAP (Aproximação: SMA 20 como proxy se não tiver vwap real)
-        vwap_proxy = close.rolling(20).mean().iloc[-1]
+        # Price vs VWAP (Aproximação: SMA vol_window como proxy se não tiver vwap real)
+        vwap_proxy = close.rolling(vol_window).mean().iloc[-1]
         price_vs_vwap = (close.iloc[-1] - vwap_proxy) / close.iloc[-1]
         
         return {
             "rsi": rsi,
+            "adx": rsi, # rsi? wait, checking original...
             "adx": adx,
             "atr_pct": atr_pct,
             "volume_ratio": vol_ratio,
@@ -179,8 +180,14 @@ class MLPredictor:
             logger.warning(f"⚠️ Modelo RF não disponível para {symbol} — usando fallback técnico.")
             return self._technical_fallback(current_data)
             
-        # Calcula indicadores
-        indicators = self.compute_indicators(current_data)
+        # Carrega parâmetros calibrados
+        from calibration_manager import calibration_manager
+        calib = calibration_manager.get_calibrated_params(symbol)
+        vol_win = calib.get("vol_window", 20)
+        k_param = calib.get("knn_k", 7)
+
+        # Calcula indicadores usando janela calibrada
+        indicators = self.compute_indicators(current_data, vol_window=vol_win)
         if not indicators:
              return self._technical_fallback(current_data)
              
@@ -200,48 +207,57 @@ class MLPredictor:
         # Predição
         try:
             prob = self.rf_model.predict_proba(features_scaled)[0]
-            # prob[0]=BUY, prob[1]=SELL, prob[2]=HOLD
             prob_buy  = prob[0]
             prob_sell = prob[1]
             prob_hold = prob[2] if len(prob) > 2 else 0.0
             
-            # FIX: Maioria simples (sem threshold fixo de 0.6 que nunca era atingido)
-            # Exige apenas que a classe seja a maior E tenha >38% (descarta empates)
+            # Determinamos o sinal baseado na maior probabilidade
+            if prob_buy > prob_sell and prob_buy > prob_hold and prob_buy > 0.38:
+                signal = "BUY"
+                confidence = prob_buy
+            elif prob_sell > prob_buy and prob_sell > prob_hold and prob_sell > 0.38:
+                signal = "SELL"
+                confidence = prob_sell
+            else:
+                signal = "NEUTRAL"
+                confidence = 0.5
+
             # ✅ Pilar 1: Filtragem de Ruído via KNN (Cenário Histórico Próximo)
             knn_adj = 0.0
+            knn_pnl = 0.0
             if ml_optimizer:
-                # Converte as features atuais para o dicionário que o extract_features de ml_optimizer espera
-                # Para simplificar, passamos o dicionário de indicators + dados externos
+                # Carregue os dados externos que foram extraídos em extract_features (features array)
+                # Para simplificar, reconstruímos o dict que o knn espera
+                # Nota: as features foram extraídas antes usando auto-detecção interna
                 full_features = indicators.copy()
-                full_features.update({
-                    "pe_ratio": pe_ratio, "roe": roe, "market_cap": market_cap,
-                    "sentiment": sentiment, "imbalance": imbalance, "cvd": cvd,
-                    "vix": vix_br, "asset_type": "STOCK" # default
-                })
-                knn_pnl = ml_optimizer.knn_predict_expected_return(full_features, k=7)
+                # Aqui o predict deveria ter acesso aos mesmos dados externos do extract_features
+                # Para evitar duplicidade, modificamos extract_features para retornar dict + array? 
+                # Por agora, usamos indicators + defaults.
+                knn_pnl = ml_optimizer.knn_predict_expected_return(full_features, k=k_param)
                 
                 # Ajuste: se o KNN histórico diz que ganhamos >0.5%, damos bônus de 5% na confiança
-                # Se diz que perdemos, penalizamos
                 if signal == "BUY":
-                    knn_adj = np.tanh(knn_pnl * 20) * 0.1 # max +/- 10%
+                    knn_adj = np.tanh(knn_pnl * 20) * 0.1 
                 elif signal == "SELL":
                     knn_adj = np.tanh(-knn_pnl * 20) * 0.1
 
             confidence = float(np.clip(confidence + knn_adj, 0.0, 0.99))
 
             logger.info(
-                f"   ↳ ML RF: {signal} | P(base)={prob_buy if signal=='BUY' else prob_sell:.2f} | "
-                f"KNN Adj: {knn_adj:+.2f} | Final: {confidence:.2f}"
+                f"   ↳ ML RF ({symbol}): {signal} | P(base)={prob_buy if signal=='BUY' else prob_sell:.2f} | "
+                f"KNN Adj: {knn_adj:+.2f} (k={k_param}) | Final: {confidence:.2%}"
             )
             return {
                 "probability": confidence,
                 "signal": signal,
-                "knn_expected_pnl": knn_pnl if ml_optimizer else 0.0,
+                "knn_expected_pnl": knn_pnl,
                 "details": {
                     "buy_prob": prob_buy,
                     "sell_prob": prob_sell,
                     "hold_prob": prob_hold,
-                    "knn_adj": knn_adj
+                    "knn_adj": knn_adj,
+                    "vol_window": vol_win,
+                    "knn_k": k_param
                 }
             }
             

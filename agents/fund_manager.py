@@ -61,8 +61,6 @@ class FundManager:
                 "size": 0.0
             }
 
-        # 0.1 Check Daily Loss Block
-        import utils
         if utils.is_asset_locked_for_day(symbol):
             logger.warning(f"🚫 [FundManager] {symbol} Bloqueado pelo restante do dia (Trade anterior com prejuízo).")
             return {
@@ -72,7 +70,15 @@ class FundManager:
                 "size": 0.0
             }
 
-        logger.info(f"🏦 [FundManager] Avaliando ativo {symbol}...")
+        # --- LOG DE CALIBRAÇÃO (Confirmação Visual) ---
+        from calibration_manager import calibration_manager
+        calib = calibration_manager.get_calibrated_params(symbol)
+        cluster_map = calibration_manager.load_clusters_map()
+        basket_id = cluster_map.get(symbol, 1) # 1 = Mid-Cap default
+        basket_name = {0: "A (Alta Liq)", 1: "B (Média Liq)", 2: "C (Baixa Liq)"}.get(basket_id, "Desconhecido")
+        
+        logger.info(f"🏦 [FundManager] Analisando {symbol} | Cluster {basket_name} | SL: {calib.get('stop_loss_pct', 0.0)*100:.1f}% | Kelly: {'Ativo' if 'kelly' in calib else 'Padrão'}")
+        # -----------------------------------------------
         
         # 1. Analyst Team (Incluindo OrderFlow)
         reports = self.analysts.analyze_all(symbol, market_data)

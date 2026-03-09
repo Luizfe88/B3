@@ -141,6 +141,16 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 
 print("[DEBUG] tenacity importado.", flush=True)
 
+# ✅ NOVOS MÓDULOS PARA CALIBRAÇÃO DINÂMICA
+try:
+    from clustering import TickerClusterer
+    from calibration_manager import calibration_manager
+    print("[DEBUG] Módulos de calibração importados.", flush=True)
+except Exception as e:
+    print(f"[DEBUG] Erro ao importar módulos de calibração: {e}", flush=True)
+    TickerClusterer = None
+    calibration_manager = None
+
 
 def _safe_import_minimize(timeout_seconds: float = 3.0):
     from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TErr
@@ -415,15 +425,36 @@ def sync_sector_map_to_mt5():
             f"Adicionando {len(missing_symbols)} símbolos ausentes ao Market Watch: {list(missing_symbols)}"
         )
 
-        # 4. Adicionar cada símbolo ausente
+        # 4. Adicionar cada símbolo ausente (com retentativas para erro -1)
         added_count = 0
+        import time
         for symbol in missing_symbols:
-            if mt5.symbol_select(symbol, True):
-                added_count += 1
-            else:
-                logger.error(
-                    f"Falha ao adicionar o símbolo '{symbol}' ao Market Watch. Erro: {mt5.last_error()}"
-                )
+            # --- NOVO: Verifica se o símbolo existe no servidor antes de tentar selecionar ---
+            sym_info = mt5.symbol_info(symbol)
+            if sym_info is None:
+                logger.info(f"⏭️ Símbolo '{symbol}' não encontrado no MT5. Pulando.")
+                continue
+            
+            success = False
+            for attempt in range(3):
+                if mt5.symbol_select(symbol, True):
+                    added_count += 1
+                    success = True
+                    break
+                
+                err = mt5.last_error()
+                # Erro -1 (Terminal: Call failed) ou IPC congestionado
+                if err[0] == -1:
+                    wait = 0.5 * (attempt + 1)
+                    time.sleep(wait)
+                    continue
+                else:
+                    # Outro erro
+                    logger.error(f"Falha ao adicionar o símbolo '{symbol}' ao Market Watch. Erro: {err}")
+                    break
+            
+            if not success and mt5.last_error()[0] == -1:
+                 logger.error(f"Símbolo '{symbol}' falhou após 3 tentativas (Terminal: Call failed). Pulando.")
 
         logger.info(
             f"✅ {added_count} de {len(missing_symbols)} símbolos foram adicionados com sucesso."
@@ -487,8 +518,26 @@ def try_mt5_connection(timeout_seconds: int = 10) -> bool:
 # AUXILIARES DE OTIMIZAÇÃO
 # ===========================
 def load_all_symbols() -> List[str]:
-    """Retorna lista de ativos a otimizar"""
-    return sorted(list(SECTOR_MAP.keys()))
+    """
+    Retorna lista de ativos a otimizar.
+    Se XP3_LOAD_ALL_MT5=1, pega tudo do Market Watch.
+    Caso contrário, usa SECTOR_MAP.
+    """
+    symbols = []
+    if os.getenv("XP3_LOAD_ALL_MT5", "0") == "1" and mt5 and mt5.terminal_info().connected:
+        all_mkt = mt5.symbols_get()
+        if all_mkt:
+            # Filtra apenas o que está visível (Market Watch)
+            symbols = [s.name for s in all_mkt if s.visible]
+    
+    if not symbols:
+        symbols = list(SECTOR_MAP.keys())
+
+    # Filtro opcional para ignorar índices futuros (WIN, WDO)
+    if os.getenv("XP3_IGNORE_FUTURES", "0") == "1":
+        symbols = [s for s in symbols if not utils.is_future(s)]
+    
+    return sorted(list(set(symbols)))
 
 
 def get_symbols():
@@ -2000,6 +2049,7 @@ def worker_wfo(
     wfo_windows: int,
     train_period: int,
     test_period: int,
+    basket_id: int = 1,
 ) -> Dict[str, Any]:
     """Worker WFO com reconexão MT5 automática"""
     out = {"symbol": sym, "status": "ok", "wfo_windows": []}
@@ -2057,7 +2107,7 @@ def worker_wfo(
                         f"🧪 {sym}: Janela {i+1}/{wfo_windows} - Iniciando Optuna..."
                     )
                     res = optimize_with_optuna(
-                        sym, df_train, n_trials=250, timeout=3600
+                        sym, df_train, n_trials=250, timeout=3600, basket_id=basket_id
                     )
 
                 if res.get("status") == "SUCCESS":
@@ -2566,7 +2616,7 @@ def apply_safety_guardrails(final_elite):
 # =========================================================
 def process_symbol_wrapper(args):
     """Wrapper para ProcessPoolExecutor"""
-    sym, config_bt = args
+    sym, config_bt, basket_id = args
     try:
         return worker_wfo(
             sym,
@@ -2575,6 +2625,7 @@ def process_symbol_wrapper(args):
             config_bt["WFO_WINDOWS"],
             config_bt["TRAIN_PERIOD"],
             config_bt["TEST_PERIOD"],
+            basket_id,
         )
     except Exception as e:
         return {"symbol": sym, "error": str(e), "status": "error"}
@@ -2698,6 +2749,28 @@ def run_optimizer():
     pd.DataFrame(rejected).to_csv(
         os.path.join(OPT_OUTPUT_DIR, "initial_rejected_assets.csv"), index=False
     )
+
+    # ✅ 2.2 CLUSTERIZAÇÃO DO UNIVERSO (LIQUIDEZ)
+    if TickerClusterer and valid_symbols_info:
+        logger.info("[INFO] Clusterizando ativos por liquidez e volatilidade...")
+        cluster_data = []
+        for sym, m in valid_symbols_info.items():
+            cluster_data.append({
+                "symbol": sym,
+                "adv": m.get("avg_fin", 0),
+                "volatility": m.get("volatility", 0.02) # std dev
+            })
+        
+        df_cluster = pd.DataFrame(cluster_data).set_index("symbol")
+        clusterer = TickerClusterer(n_clusters=min(3, len(df_cluster)))
+        clusterer.train(df_cluster)
+        clusterer.save(os.path.join(OPT_OUTPUT_DIR, "clusters.json"))
+        
+        # Faz backup global para o bot consumir
+        clusterer.save("clusters.json")
+    else:
+        clusterer = None
+        logger.warning("[WARN] Clusterizador indisponível ou sem ativos válidos.")
     # Garante inclusão dos blue chips obrigatórios
     for bs in elite_blue:
         if bs not in valid_symbols:
@@ -2776,7 +2849,29 @@ def run_optimizer():
         "TEST_PERIOD": 300 if SANDBOX_MODE else 400,
     }
 
-    tasks = [(sym, bt_config) for sym in valid_symbols]
+    # ✅ Mapeamento de Clusters para Workers
+    # Guardar clusters para o Bot
+    clusters_to_save = {}
+    if clusterer:
+        for sym, m in valid_symbols_info.items():
+            feat = [m.get("avg_fin", 0), m.get("volatility", 0.02)]
+            clusters_to_save[sym] = int(clusterer.predict(feat))
+    else:
+        clusters_to_save = {sym: 1 for sym in valid_symbols}
+
+    with open("clusters.json", "w") as f:
+        json.dump(clusters_to_save, f)
+
+    cluster_map = {}
+    if clusterer:
+        for sym, m in valid_symbols_info.items():
+            feat = [m.get("avg_fin", 0), m.get("volatility", 0.02)]
+            cluster_map[sym] = int(clusterer.predict(feat))
+    else:
+        for sym in valid_symbols:
+            cluster_map[sym] = 1 # Mid-Liquidity fallback
+
+    tasks = [(sym, bt_config, cluster_map.get(sym, 1)) for sym in valid_symbols]
     all_results = {}
 
     print(
@@ -3294,6 +3389,14 @@ def run_optimizer():
         logger.info(f"🧪 Diagnósticos semanais salvos: {diag_txt}")
     except Exception:
         pass
+
+    # ✅ SALVAR CALIBRAÇÕES FINAIS (Para o Bot consumir)
+    if calibration_manager and all_results:
+        try:
+            logger.info("💾 Consolidando resultados em calibrations.json...")
+            calibration_manager.update_from_results(all_results)
+        except Exception as e:
+            logger.error(f"❌ Erro ao salvar calibrations.json: {e}")
 
 
 if __name__ == "__main__":

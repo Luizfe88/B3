@@ -284,12 +284,12 @@ SECTOR_MAP = {
     "ABCB4": "FINANCEIRO",
     "BPAN4": "FINANCEIRO",
     "BRSR6": "FINANCEIRO",
-    "MODL11": "FINANCEIRO",
+    # "MODL11": "FINANCEIRO", # Delisted
     "BBSE3": "SEGUROS",
     "CXSE3": "SEGUROS",
     "PSSA3": "SEGUROS",
     "IRBR3": "SEGUROS",
-    "SULA11": "SEGUROS",
+    # "SULA11": "SEGUROS", # Delisted
     "CIEL3": "FINANCEIRO",
     "CASH3": "FINANCEIRO",
     "BMGB4": "FINANCEIRO",
@@ -300,20 +300,19 @@ SECTOR_MAP = {
     "PETR3": "PETROLEO",
     "PETR4": "PETROLEO",
     "PRIO3": "PETROLEO",
-    "RRRP3": "PETROLEO",
-    "ENAT3": "PETROLEO",
+    # "RRRP3": "PETROLEO", # Now BRAV3
+    # "ENAT3": "PETROLEO", # Now BRAV3
+    "BRAV3": "PETROLEO",
     "RECV3": "PETROLEO",
     "CSAN3": "PETROLEO",
     "UGPA3": "PETROLEO",
     "VBBR3": "PETROLEO",
     "RAIZ4": "PETROLEO",
-    "OSXB3": "PETROLEO",
-    "DMMO3": "PETROLEO",
+    # "DMMO3": "PETROLEO", # Delisted
     # ==========================================
     # ⚡ UTILIDADE PÚBLICA (Eletricidade e Saneamento)
     # ==========================================
     "ELET3": "UTILIDADE_PUBLICA",
-    "ELET6": "UTILIDADE_PUBLICA",
     "EQTL3": "UTILIDADE_PUBLICA",
     "ENEV3": "UTILIDADE_PUBLICA",
     "CPLE6": "UTILIDADE_PUBLICA",
@@ -324,8 +323,8 @@ SECTOR_MAP = {
     "EGIE3": "UTILIDADE_PUBLICA",
     "NEOE3": "UTILIDADE_PUBLICA",
     "AURE3": "UTILIDADE_PUBLICA",
-    "MEGA3": "UTILIDADE_PUBLICA",
-    "AESB3": "UTILIDADE_PUBLICA",
+    # "MEGA3": "UTILIDADE_PUBLICA", # Delisted
+    # "AESB3": "UTILIDADE_PUBLICA", # Delisted
     "SBSP3": "SANEAMENTO",
     "CSMG3": "SANEAMENTO",
     "SAPR11": "SANEAMENTO",
@@ -339,7 +338,7 @@ SECTOR_MAP = {
     "CMIN3": "MINERACAO",
     "AURA33": "MINERACAO",
     "CBAV3": "MINERACAO",
-    "LITH3": "MINERACAO",
+    # "LITH3": "MINERACAO", # Delisted/Unknown
     "GGBR4": "SIDERURGIA",
     "GOAU4": "SIDERURGIA",
     "CSNA3": "SIDERURGIA",
@@ -373,14 +372,15 @@ SECTOR_MAP = {
     "BHIA3": "VAREJO",
     "LREN3": "VAREJO",
     "CEAB3": "VAREJO",
-    "ARZZ3": "VAREJO",
-    "SOMA3": "VAREJO",
+    "AZZA3": "VAREJO", # Now AREZZO + SOMA
+    # "ARZZ3": "VAREJO", # Delisted
+    # "SOMA3": "VAREJO", # Delisted
     "GUAR3": "VAREJO",
     "AMER3": "VAREJO",
-    "PETZ3": "VAREJO",
+    # "PETZ3": "VAREJO", # Delisted/Merged
     "ALPA4": "VAREJO",
     "CGRA4": "VAREJO",
-    "SLED4": "VAREJO",
+    # "SLED4": "VAREJO", # Delisted
     "CRFB3": "SUPERMERCADOS",
     "ASAI3": "SUPERMERCADOS",
     "PCAR3": "SUPERMERCADOS",
@@ -429,7 +429,7 @@ SECTOR_MAP = {
     "ALOS3": "SHOPPINGS",
     "SYNE3": "SHOPPINGS",
     "LOGG3": "IMOBILIARIO",
-    "BRPR3": "IMOBILIARIO",
+    # "BRPR3": "IMOBILIARIO", # Delisted
     # ==========================================
     # 🚚 LOGÍSTICA E TRANSPORTE
     # ==========================================

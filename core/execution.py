@@ -351,21 +351,27 @@ class ExecutionEngine:
         threading.Thread(target=_task, daemon=True, name=f"Slicing_{symbol}").start()
 
     def execute_smart_order(self, symbol: str, side: OrderSide, volume: float, price: float, sl: float, tp: float, comment: str):
-        """Decide entre execução direta ou fatiada."""
-        # Se volume > 5x o esperado em 5 min, fatia
+        """Decide entre execução direta ou fatiada baseado na agressividade (eta)."""
         try:
-            import utils
-            rates = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M5, 10)
-            avg_vol = rates['tick_volume'].mean() if rates is not None else 100
+            from calibration_manager import calibration_manager
+            calib = calibration_manager.get_calibrated_params(symbol)
+            eta = calib.get("eta_aggression", 5.0) # Default 5.0 (agressivo)
             
-            if volume > (avg_vol * 5):
+            import utils
+            rates = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M5, 12) # Última hora
+            avg_vol_5m = rates['tick_volume'].mean() if rates is not None and not rates.empty else 100
+            
+            # Se o volume da ordem for maior que eta * volume médio de 5min, fatiamos
+            if volume > (avg_vol_5m * eta):
+                logger.info(f"⚖️ [SMART] Volume {volume} > {avg_vol_5m} * {eta:.1f}. Fatiando execução.")
                 self.execute_advanced(symbol, side, volume, 10, comment)
                 return True
             else:
                 order = OrderParams(symbol=symbol, side=side, volume=volume, price=price, sl=sl, tp=tp, comment=comment)
                 res = self.send_order(order)
                 return res.get("status") == "success"
-        except:
+        except Exception as e:
+            logger.error(f"Erro no smart order ({symbol}): {e}")
             order = OrderParams(symbol=symbol, side=side, volume=volume, price=price, sl=sl, tp=tp, comment=comment)
             res = self.send_order(order)
             return res.get("status") == "success"

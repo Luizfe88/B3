@@ -18,13 +18,17 @@ class RiskyTrader(Trader):
     def propose_action(self, symbol: str, analysis: Dict[str, Any], debate_result: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"🔥 [{self.name}] Avaliando momentum para {symbol}...")
         consensus = debate_result.get('consensus', 'NEUTRAL')
+        
+        from calibration_manager import calibration_manager
+        calib = calibration_manager.get_calibrated_params(symbol)
+        stop_loss = calib.get("stop_loss_pct", 0.04)
 
         if consensus == 'BULLISH':
             logger.info(f"   ↳ Proposta: COMPRA (Agressiva) — consenso={consensus}")
             return {
                 "action": "BUY",
                 "size_multiplier": 1.0,
-                "stop_loss_pct": 0.04,
+                "stop_loss_pct": stop_loss,
                 "probability": analysis.get("technical", {}).get("score", 0.5),
             }
 
@@ -33,7 +37,7 @@ class RiskyTrader(Trader):
             return {
                 "action": "SELL",
                 "size_multiplier": 1.0,
-                "stop_loss_pct": 0.04,
+                "stop_loss_pct": stop_loss,
                 "probability": analysis.get("technical", {}).get("score", 0.5),
             }
 
@@ -49,6 +53,11 @@ class NeutralTrader(Trader):
         logger.info(f"⚖️ [{self.name}] Buscando equilíbrio para {symbol}...")
 
         consensus = debate_result.get('consensus', 'NEUTRAL')
+        
+        from calibration_manager import calibration_manager
+        calib = calibration_manager.get_calibrated_params(symbol)
+        stop_loss = calib.get("stop_loss_pct", 0.03)
+        
         fund      = analysis.get('fundamental', {})
         sent      = analysis.get('sentiment', {})
         of        = analysis.get('orderflow', {})
@@ -60,7 +69,7 @@ class NeutralTrader(Trader):
             return {
                 "action": "BUY",
                 "size_multiplier": 0.9,
-                "stop_loss_pct": 0.03,
+                "stop_loss_pct": stop_loss,
                 "probability": tech.get("score", 0.5),
             }
 
@@ -76,7 +85,7 @@ class NeutralTrader(Trader):
             return {
                 "action": "BUY",
                 "size_multiplier": 0.7,
-                "stop_loss_pct": 0.025,
+                "stop_loss_pct": stop_loss * 0.8, # Reduz stop em Macro-flow
                 "probability": tech.get("score", 0.5),
             }
 
@@ -86,7 +95,7 @@ class NeutralTrader(Trader):
             return {
                 "action": "SELL",
                 "size_multiplier": 0.9,
-                "stop_loss_pct": 0.03,
+                "stop_loss_pct": stop_loss,
                 "probability": tech.get("score", 0.5),
             }
 
@@ -102,6 +111,10 @@ class SafeTrader(Trader):
     def propose_action(self, symbol: str, analysis: Dict[str, Any], debate_result: Dict[str, Any]) -> Dict[str, Any]:
         logger.info(f"🛡️ [{self.name}] Priorizando proteção de capital em {symbol}...")
 
+        from calibration_manager import calibration_manager
+        calib = calibration_manager.get_calibrated_params(symbol)
+        stop_loss = calib.get("stop_loss_pct", 0.02)
+
         tech = analysis.get('technical', {})
         fund = analysis.get('fundamental', {})
         sent = analysis.get('sentiment', {})
@@ -116,7 +129,7 @@ class SafeTrader(Trader):
             return {
                 "action": "BUY",
                 "size_multiplier": 0.7,
-                "stop_loss_pct": 0.02,
+                "stop_loss_pct": stop_loss,
                 "probability": tech.get("score", 0.5),
             }
 
@@ -129,7 +142,7 @@ class SafeTrader(Trader):
             return {
                 "action": "BUY",
                 "size_multiplier": 0.6,
-                "stop_loss_pct": 0.02,
+                "stop_loss_pct": stop_loss,
                 "probability": tech.get("score", 0.5),
             }
 
@@ -141,7 +154,7 @@ class SafeTrader(Trader):
             return {
                 "action": "SELL",
                 "size_multiplier": 0.7,
-                "stop_loss_pct": 0.015,
+                "stop_loss_pct": stop_loss * 0.75, # Mais apertado em Sell Seguro
                 "probability": tech.get("score", 0.5),
             }
 

@@ -67,6 +67,7 @@ from agents.fund_manager import FundManager
 import config
 import utils
 import MetaTrader5 as mt5
+from calibration_manager import calibration_manager
 
 
 def main():
@@ -92,6 +93,9 @@ def main():
 
     position_manager = PositionManager(execution)
     fund_manager = FundManager()
+
+    # Exibe resumo da calibração no console
+    print(calibration_manager.get_summary(), flush=True)
 
     # 2. Loop Principal
     logger.info("✅ Sistema online. Preparando Market Watch...")
