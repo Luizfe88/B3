@@ -37,6 +37,13 @@ KELLY_WINRATE_BOOST = config["kelly_fraction"]["winrate_boost"]
 KELLY_LOSS_STREAK_PENALTY = config["kelly_fraction"]["loss_streak_penalty"]
 MAX_RUIN_PROBABILITY = config["kelly_fraction"]["max_ruin_probability"]
 
+# --- QUANTITATIVE MOTOR PILLARS ---
+USE_KELLY_SIZING = True
+KELLY_FRACTION = 0.5  # Half-Kelly for stability
+WFA_ENABLED = True
+COMPLEXITY_PENALTY_LAMBDA = 0.01  # Penalty for models with too many parameters
+# ----------------------------------
+
 # Risk Limits
 MAX_DAILY_LOSS_MONEY = config["risk_limits"]["max_daily_loss_money"]
 MAX_CONCURRENT_POSITIONS = config["risk_limits"]["max_concurrent_positions"]
@@ -438,7 +445,7 @@ SECTOR_MAP = {
     "PORT3": "LOGISTICA",
     "SEQL3": "LOGISTICA",
     "AZUL4": "AVIAÇÃO",
-    "GOLL4": "AVIAÇÃO",
+    "GOLL54": "AVIAÇÃO",
     "EMBR3": "AEROESPACIAL",
     # ==========================================
     # ⚙️ BENS INDUSTRIAIS
@@ -487,8 +494,8 @@ CORR_UPDATE_INTERVAL = 3600  # 1 hora
 # Horários de fechamento e bloqueio de entradas
 NO_ENTRY_AFTER = "16:15"
 CLOSE_ALL_BY = "16:45"
-FRIDAY_NO_ENTRY_AFTER = "16:15"  # FIX: era 15:15, liberado +1h para sextas
-FRIDAY_CLOSE_ALL_BY = "16:45"
+FRIDAY_NO_ENTRY_AFTER = "15:00"  # Voltando para 15:00 conforme solicitado pelo usuário
+FRIDAY_CLOSE_ALL_BY = "16:15"    # Puxando o fechamento para 16:15 para acompanhar a parada de entradas
 DAILY_RESET_TIME = "10:00"  # Reset diário do circuit breaker
 
 # Modo de operação

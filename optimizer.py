@@ -306,7 +306,7 @@ def _score_df(df, p):
         return -1e9
     if m.get("max_dd", 1.0) > MAX_DD_OOS:
         return -1e9
-    return hybrid_score(m)
+    return hybrid_score(m, p)
 
 
 def optimize_gd(
@@ -710,11 +710,25 @@ def evaluate_params_wfo(
 
 
 # scoring
-def hybrid_score(metrics: Dict[str, Any]) -> float:
+def hybrid_score(metrics: Dict[str, Any], params: Dict[str, Any] = None) -> float:
     mean_oos = metrics.get("mean_oos", -9999.0)
     max_dd = metrics.get("max_dd", 1.0)
     std_oos = metrics.get("std_oos", 0.0)
+    
+    # Base score
     score = mean_oos - 0.6 * max_dd - 0.2 * std_oos
+    
+    # Complexity Penalty (Occam's Razor)
+    if params:
+        # Penaliza cada indicador ativo e valores altos de lookback (overfitting)
+        complexity = 0
+        if params.get("use_rsi"): complexity += 1
+        if params.get("use_adx"): complexity += 1
+        
+        # Penalidade por graus de liberdade/complexidade
+        lmbda = getattr(config, "COMPLEXITY_PENALTY_LAMBDA", 0.01)
+        score -= lmbda * complexity
+
     if (metrics.get("n_trades", metrics.get("total_trades", 0)) > 150) and (
         metrics.get("pf", metrics.get("profit_factor", 0.0)) < 1.5
     ):

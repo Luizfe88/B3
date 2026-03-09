@@ -1,8 +1,10 @@
-
 import MetaTrader5 as mt5
 import logging
 import time
 import threading
+import numpy as np
+import pandas as pd
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -294,3 +296,74 @@ class ExecutionEngine:
     def get_symbol_info(self, symbol: str):
         with self._lock:
             return mt5.symbol_info(symbol)
+
+    # ========================
+    # 🌐 OPTIMAL EXECUTION (Pilar 3)
+    # ========================
+    
+    def get_avg_volume_profile(self, symbol: str, lookback_days: int = 5) -> pd.Series:
+        """Calcula o perfil de volume intra-day (M5) dos últimos dias."""
+        try:
+            import utils
+            rates = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M5, 12 * 9 * lookback_days)
+            if rates is None or rates.empty:
+                return pd.Series()
+            
+            rates['time_only'] = rates['time'].dt.time
+            profile = rates.groupby('time_only')['tick_volume'].mean()
+            return profile
+        except Exception as e:
+            logger.error(f"Erro ao calcular perfil de volume para {symbol}: {e}")
+            return pd.Series()
+
+    def almgren_chriss_slicing(self, total_volume: float, duration_slices: int, risk_aversion: float = 0.1) -> np.ndarray:
+        """Implementação Almgren-Chriss simplificada."""
+        volatility = 0.02 # Proxy
+        liquidity_coeff = 0.01 # Proxy
+        kappa = np.sqrt(risk_aversion * volatility**2 / liquidity_coeff)
+        t = np.arange(duration_slices + 1)
+        N, T = total_volume, duration_slices
+        n_t = N * np.sinh(kappa * (T - t)) / np.sinh(kappa * T)
+        slices = -np.diff(n_t)
+        return slices * (N / np.sum(slices)) if np.sum(slices) != 0 else np.array([total_volume])
+
+    def execute_advanced(self, symbol: str, side: OrderSide, total_volume: float, duration_min: int, comment: str):
+        """Executa ordem fatiada (VWAP/TWAP) via thread separada."""
+        def _task():
+            logger.info(f"🚀 Iniciando execução avançada {symbol} | Vol: {total_volume}")
+            slices_count = max(1, duration_min)
+            interval = 60
+            slice_vol = total_volume / slices_count
+            
+            for i in range(slices_count):
+                if i > 0: time.sleep(interval)
+                import utils
+                norm_vol = utils.normalize_volume(symbol, slice_vol)
+                if norm_vol <= 0: continue
+                
+                tick = mt5.symbol_info_tick(symbol)
+                price = tick.ask if side == OrderSide.BUY else tick.bid
+                order = OrderParams(symbol=symbol, side=side, volume=norm_vol, price=price, comment=f"{comment}_S{i+1}")
+                self.send_order(order)
+        
+        threading.Thread(target=_task, daemon=True).start()
+
+    def execute_smart_order(self, symbol: str, side: OrderSide, volume: float, price: float, sl: float, tp: float, comment: str):
+        """Decide entre execução direta ou fatiada."""
+        # Se volume > 5x o esperado em 5 min, fatia
+        try:
+            import utils
+            rates = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M5, 10)
+            avg_vol = rates['tick_volume'].mean() if rates is not None else 100
+            
+            if volume > (avg_vol * 5):
+                self.execute_advanced(symbol, side, volume, 10, comment)
+                return True
+            else:
+                order = OrderParams(symbol=symbol, side=side, volume=volume, price=price, sl=sl, tp=tp, comment=comment)
+                res = self.send_order(order)
+                return res.get("status") == "success"
+        except:
+            order = OrderParams(symbol=symbol, side=side, volume=volume, price=price, sl=sl, tp=tp, comment=comment)
+            res = self.send_order(order)
+            return res.get("status") == "success"

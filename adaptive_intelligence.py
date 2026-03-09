@@ -72,9 +72,9 @@ class AdaptiveIntelligence:
         self.running = False
         
         if self.parameter_history:
-            self.last_adjustment = self.parameter_history[-1].get("timestamp", datetime.now())
+            self.last_adjustment = self.parameter_history[-1].get("timestamp")
         else:
-            self.last_adjustment = datetime.now()
+            self.last_adjustment = None
             
         self.performance_window = deque(maxlen=48)  # Últimas 48 horas
 
@@ -86,7 +86,19 @@ class AdaptiveIntelligence:
         try:
             last_config = database.get_latest_adaptive_config()
             if last_config:
-                logger.info("🧠 Carregando memória da última sessão do Adaptive Intelligence...")
+                ts_str = last_config.get("timestamp", "Data desconhecida")
+                
+                # Se for datetime, formata
+                if isinstance(ts_str, datetime):
+                    ts_str = ts_str.strftime('%d/%m/%Y %H:%M:%S')
+                elif isinstance(ts_str, str) and len(ts_str) >= 19:
+                    try:
+                        dt_obj = datetime.fromisoformat(ts_str[:19].replace(' ', 'T'))
+                        ts_str = dt_obj.strftime('%d/%m/%Y %H:%M:%S')
+                    except Exception:
+                        ts_str = ts_str[:19].replace('T', ' ')
+                    
+                logger.info(f"🧠 Carregando memória da última sessão do Adaptive Intelligence ({ts_str})...")
                 return AdaptiveParameters(
                     ml_confidence_threshold=last_config.get("ml_threshold", cfg["ml_model"]["confidence_base"]),
                     kelly_fraction_multiplier=last_config.get("kelly_multiplier", 1.0),
@@ -188,10 +200,11 @@ class AdaptiveIntelligence:
             sl_distances = []
             tp_distances = []
             for trade in recent_trades[-50:]:
-                if "entry_price" in trade and "sl" in trade and "tp" in trade:
+                if trade.get("entry_price") and trade.get("sl") is not None and trade.get("tp") is not None:
                     entry = trade["entry_price"]
-                    sl_distances.append(abs(entry - trade["sl"]) / entry * 100)
-                    tp_distances.append(abs(trade["tp"] - entry) / entry * 100)
+                    if entry > 0:
+                        sl_distances.append(abs(entry - trade["sl"]) / entry * 100)
+                        tp_distances.append(abs(trade["tp"] - entry) / entry * 100)
 
             avg_sl = np.mean(sl_distances) if sl_distances else 1.0
             avg_tp = np.mean(tp_distances) if tp_distances else 2.0
@@ -442,7 +455,7 @@ class AdaptiveIntelligence:
             if not recent_trades:
                 return 0.5
 
-            winners = sum(1 for t in recent_trades if float(t.get("net_pnl", 0)) > 0)
+            winners = sum(1 for t in recent_trades if float(t.get("pnl_money", 0)) > 0)
             return winners / len(recent_trades) if recent_trades else 0.5
 
         except Exception as e:
@@ -460,7 +473,7 @@ class AdaptiveIntelligence:
             if len(recent_trades) < 3:
                 return 0.0
 
-            pnls = [float(t.get("net_pnl", 0)) for t in recent_trades]
+            pnls = [float(t.get("pnl_money", 0)) for t in recent_trades]
             returns = np.array(pnls)
 
             if returns.std() == 0:
@@ -582,6 +595,13 @@ class AdaptiveIntelligence:
         try:
             df = pd.DataFrame([vars(m) for m in self.metrics_history]) if self.metrics_history else pd.DataFrame()
 
+            # Conta apenas ajustes realizados hoje (UTC-3 ou local)
+            today = datetime.now().date()
+            adjustments_today = [
+                a for a in self.parameter_history 
+                if a.get("timestamp") and a.get("timestamp").date() == today
+            ]
+
             if df.empty:
                 avg_winrate = 0.0
                 avg_sharpe = 0.0
@@ -606,7 +626,8 @@ class AdaptiveIntelligence:
 
             return {
                 "status": "Ativo" if self.running else "Ativo (Aguardando Trades)",
-                "total_adjustments": len(self.parameter_history),
+                "total_adjustments": len(adjustments_today),
+                "total_history_adjustments": len(self.parameter_history),
                 "current_parameters": vars(self.current_params),
                 "performance_metrics": {
                     "avg_winrate_24h": avg_winrate,
@@ -614,7 +635,7 @@ class AdaptiveIntelligence:
                     "avg_volatility": avg_vol,
                     "winrate_trend": wr_trend,
                 },
-                "last_adjustment": self.last_adjustment.isoformat(),
+                "last_adjustment": self.last_adjustment.isoformat() if self.last_adjustment else "Nenhum",
                 "market_state": {
                     "volatility_level": vol_level,
                     "correlation_level": corr_level,

@@ -443,16 +443,16 @@ def main():
                             )
                             continue
 
-                        # Cria ordem
-                        order = OrderParams(
-                            symbol=symbol,
-                            side=OrderSide.BUY,
-                            volume=final_volume,
-                            price=0.0,  # Market order
-                            sl=sl,  # SL calculado
-                            tp=tp,  # TP calculado
+                        # Execução Inteligente (Pillar 3: Optimal Execution)
+                        success = execution.execute_smart_order(
+                            symbol,
+                            OrderSide.BUY,
+                            final_volume,
+                            current_price,
+                            sl,
+                            tp,
+                            comment=f"XP3_QUANT_{size_multiplier:.1f}",
                         )
-                        execution.send_order(order)
 
                         # ⏱️ FIX RACE CONDITION: Registra ordem pendente e aguarda confirmação no MT5
                         position_manager.register_pending_order(
@@ -554,16 +554,16 @@ def main():
                             )
                             continue
 
-                        # Cria ordem
-                        order = OrderParams(
-                            symbol=symbol,
-                            side=OrderSide.SELL,
-                            volume=final_volume,
-                            price=0.0,  # Market order
-                            sl=sl,  # SL calculado
-                            tp=tp,  # TP calculado
+                        # Execução Inteligente (Pillar 3: Optimal Execution)
+                        success = execution.execute_smart_order(
+                            symbol,
+                            OrderSide.SELL,
+                            final_volume,
+                            current_price,
+                            sl,
+                            tp,
+                            comment=f"XP3_QUANT_{size_multiplier:.1f}",
                         )
-                        execution.send_order(order)
 
                         # ⏱️ FIX RACE CONDITION: Registra ordem pendente e aguarda confirmação no MT5
                         position_manager.register_pending_order(

@@ -13,6 +13,19 @@ class RiskGuardian:
         self.name = name
         self.tolerance = tolerance
 
+    def calculate_kelly_size(self, p: float, b: float = 2.0) -> float:
+        """
+        Calcula o tamanho da posição usando o Critério de Kelly.
+        f* = (p(b+1) - 1) / b
+        Onde p = probabilidade de acerto, b = razão ganho/perda.
+        """
+        if b <= 0:
+            return 0.0
+        f_star = (p * (b + 1) - 1) / b
+        # Aplica fração Kelly (ex: Half-Kelly) para reduzir volatilidade
+        kelly_fraction = getattr(config, "KELLY_FRACTION", 0.5)
+        return max(0.0, f_star * kelly_fraction)
+
     def validate_trade(
         self, symbol: str, proposal: Dict[str, Any], market_context: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -34,6 +47,25 @@ class RiskGuardian:
         base_risk_pct = config.MAX_CAPITAL_ALLOCATION_PCT  # Ex: 0.02 (2%)
         # Interpret size_multiplier as multiplier of the BASE RISK (not of capital)
         proposed_size_multiplier = float(proposal.get("size_multiplier", 1.0))
+
+        # --- DYNAMIC KELLY SIZING ---
+        if getattr(config, "USE_KELLY_SIZING", True) and "probability" in proposal:
+            p = float(proposal["probability"])
+            # b = proporção de ganho/perda (ratio avg_win/avg_loss)
+            # Tenta buscar do market_data ou usa default 2.0 (conservador para B3)
+            b = float(market_context.get("win_loss_ratio", 2.0))
+            
+            kelly_size = self.calculate_kelly_size(p, b)
+            if kelly_size > 0:
+                logger.info(f"📊 [{self.name}] Kelly Sizing: p={p:.2f}, b={b:.2f} -> f*={kelly_size:.2%}")
+                # O Kelly f* é o percentual do capital. 
+                # Como trabalhamos com size_multiplier sobre o base_risk (2%), 
+                # precisamos converter f* para esse multiplicador.
+                # Ex: se f* = 4% e base_risk = 2%, multiplier = 2.0
+                proposed_size_multiplier = kelly_size / base_risk_pct
+                proposal["size_multiplier"] = proposed_size_multiplier
+                proposal["kelly_adjusted"] = True
+        # -----------------------------
 
         # Calcula o risco efetivo desta proposta (por trade)
         effective_risk_pct = base_risk_pct * proposed_size_multiplier

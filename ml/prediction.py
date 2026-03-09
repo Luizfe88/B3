@@ -13,10 +13,12 @@ try:
     import utils
     from fundamentals import fundamental_fetcher
     from news_filter import get_news_sentiment
+    from ml_optimizer import ml_optimizer
 except ImportError:
     utils = None
     fundamental_fetcher = None
     get_news_sentiment = None
+    ml_optimizer = None
 
 logger = logging.getLogger("MLPredictor")
 
@@ -205,27 +207,41 @@ class MLPredictor:
             
             # FIX: Maioria simples (sem threshold fixo de 0.6 que nunca era atingido)
             # Exige apenas que a classe seja a maior E tenha >38% (descarta empates)
-            MIN_CONF = 0.38
-            if prob_buy > prob_sell and prob_buy > prob_hold and prob_buy > MIN_CONF:
-                signal = "BUY"
-                confidence = prob_buy
-            elif prob_sell > prob_buy and prob_sell > prob_hold and prob_sell > MIN_CONF:
-                signal = "SELL"
-                confidence = prob_sell
-            else:
-                signal = "NEUTRAL"
-                confidence = prob_hold
+            # ✅ Pilar 1: Filtragem de Ruído via KNN (Cenário Histórico Próximo)
+            knn_adj = 0.0
+            if ml_optimizer:
+                # Converte as features atuais para o dicionário que o extract_features de ml_optimizer espera
+                # Para simplificar, passamos o dicionário de indicators + dados externos
+                full_features = indicators.copy()
+                full_features.update({
+                    "pe_ratio": pe_ratio, "roe": roe, "market_cap": market_cap,
+                    "sentiment": sentiment, "imbalance": imbalance, "cvd": cvd,
+                    "vix": vix_br, "asset_type": "STOCK" # default
+                })
+                knn_pnl = ml_optimizer.knn_predict_expected_return(full_features, k=7)
                 
+                # Ajuste: se o KNN histórico diz que ganhamos >0.5%, damos bônus de 5% na confiança
+                # Se diz que perdemos, penalizamos
+                if signal == "BUY":
+                    knn_adj = np.tanh(knn_pnl * 20) * 0.1 # max +/- 10%
+                elif signal == "SELL":
+                    knn_adj = np.tanh(-knn_pnl * 20) * 0.1
+
+            confidence = float(np.clip(confidence + knn_adj, 0.0, 0.99))
+
             logger.info(
-                f"   ↳ ML RF: {signal} | P(buy)={prob_buy:.2f} P(sell)={prob_sell:.2f} P(hold)={prob_hold:.2f}"
+                f"   ↳ ML RF: {signal} | P(base)={prob_buy if signal=='BUY' else prob_sell:.2f} | "
+                f"KNN Adj: {knn_adj:+.2f} | Final: {confidence:.2f}"
             )
             return {
                 "probability": confidence,
                 "signal": signal,
+                "knn_expected_pnl": knn_pnl if ml_optimizer else 0.0,
                 "details": {
                     "buy_prob": prob_buy,
                     "sell_prob": prob_sell,
-                    "hold_prob": prob_hold
+                    "hold_prob": prob_hold,
+                    "knn_adj": knn_adj
                 }
             }
             

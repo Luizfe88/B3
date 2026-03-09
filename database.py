@@ -16,6 +16,7 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket INTEGER UNIQUE,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             symbol TEXT NOT NULL,
             side TEXT NOT NULL,
@@ -28,7 +29,6 @@ def init_db():
             pnl_pct REAL,
             reason TEXT,
             ml_reward REAL,
-            -- Novas colunas para análise avançada
             strategy TEXT DEFAULT 'ELITE',
             ml_confidence REAL DEFAULT 0.0,
             ml_prediction TEXT DEFAULT '',
@@ -189,6 +189,7 @@ def migrate_db():
     cursor = conn.cursor()
 
     new_columns = [
+        ("ticket", "INTEGER UNIQUE"),
         ("strategy", "TEXT DEFAULT 'ELITE'"),
         ("ml_confidence", "REAL DEFAULT 0.0"),
         ("ml_prediction", "TEXT DEFAULT ''"),
@@ -223,6 +224,7 @@ def save_trade(
     pnl_pct=0.0,
     reason="",
     ml_reward=0.0,
+    ticket=None,
     strategy="ELITE",
     ml_confidence=0.0,
     ml_prediction="",
@@ -231,44 +233,71 @@ def save_trade(
     order_flow_delta=0.0,
     duration_minutes=0,
     ab_group="A",
+    exit_time=None,
+    timestamp=None,
 ):
     init_db()
     migrate_db()
 
     conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        """
-        INSERT INTO trades 
-        (symbol, side, volume, entry_price, exit_price, sl, tp, pnl_money, pnl_pct, 
-         reason, ml_reward, strategy, ml_confidence, ml_prediction, atr_pct,
-         vix_level, order_flow_delta, duration_minutes, exit_time, ab_group)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-        (
-            symbol,
-            side,
-            volume,
-            entry_price,
-            exit_price,
-            sl,
-            tp,
-            pnl_money,
-            pnl_pct,
-            reason,
-            ml_reward,
-            strategy,
-            ml_confidence,
-            ml_prediction,
-            atr_pct,
-            vix_level,
-            order_flow_delta,
-            duration_minutes,
-            datetime.now() if exit_price else None,
-            ab_group,
-        ),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        # Tenta atualizar se o ticket existir, senão insere
+        if ticket:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM trades WHERE ticket = ?", (ticket,))
+            row = cursor.fetchone()
+            if row:
+                # Update existente
+                conn.execute(
+                    """
+                    UPDATE trades 
+                    SET exit_price = ?, sl = ?, tp = ?, pnl_money = ?, pnl_pct = ?, 
+                        exit_time = ?, duration_minutes = ?
+                    WHERE ticket = ?
+                """,
+                    (exit_price, sl, tp, pnl_money, pnl_pct, 
+                     exit_time if exit_time else (datetime.now() if exit_price else None), duration_minutes, ticket),
+                )
+                conn.commit()
+                return
+
+        # Insert novo
+        conn.execute(
+            """
+            INSERT INTO trades 
+            (symbol, side, volume, entry_price, exit_price, sl, tp, pnl_money, pnl_pct, 
+             reason, ml_reward, strategy, ml_confidence, ml_prediction, atr_pct,
+             vix_level, order_flow_delta, duration_minutes, exit_time, ab_group, ticket, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                symbol,
+                side,
+                volume,
+                entry_price,
+                exit_price,
+                sl,
+                tp,
+                pnl_money,
+                pnl_pct,
+                reason,
+                ml_reward,
+                strategy,
+                ml_confidence,
+                ml_prediction,
+                atr_pct,
+                vix_level,
+                order_flow_delta,
+                duration_minutes,
+                exit_time if exit_time else (datetime.now() if exit_price else None),
+                ab_group,
+                ticket,
+                timestamp if timestamp else datetime.now(),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_trades_by_date(target_date_str: str):
@@ -595,9 +624,108 @@ def get_recent_adaptive_adjustments(limit: int = 100) -> list:
         conn.close()
 
 
+
+def cleanup_invalid_symbols():
+    """Remove trades that are not B3 stocks according to config.MONITORED_SYMBOLS."""
+    import config
+    allowed = config.MONITORED_SYMBOLS
+    if not allowed:
+        return
+        
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        # Pega todos os símbolos no banco
+        df = pd.read_sql_query("SELECT DISTINCT symbol FROM trades", conn)
+        invalid = [s for s in df['symbol'].tolist() if s not in allowed]
+        
+        if invalid:
+            query = "DELETE FROM trades WHERE symbol IN ({})".format(','.join(['?']*len(invalid)))
+            conn.execute(query, tuple(invalid))
+            conn.commit()
+            logger.info(f"🧹 Database cleanup: Removed {len(invalid)} non-B3 assets: {invalid}")
+    except Exception as e:
+        logger.error(f"❌ Error during cleanup: {e}")
+    finally:
+        conn.close()
+
+
+def sync_trades_from_mt5():
+    """
+    Sincroniza o banco de dados SQLite com o histórico do MT5.
+    Garante que trades fechados manualmente ou por falhas de log sejam capturados.
+    """
+    import MetaTrader5 as mt5
+    import config
+    
+    logger.info("🔄 Iniciando sincronização MT5 -> Database...")
+    
+    # Inicializa MT5 se necessário
+    if not mt5.initialize():
+        init_params = {
+            "path": getattr(config, "MT5_TERMINAL_PATH", None),
+            "login": int(config.MT5_ACCOUNT) if config.MT5_ACCOUNT else 0,
+            "password": str(config.MT5_PASSWORD or ""),
+            "server": str(config.MT5_SERVER or ""),
+            "timeout": 10000
+        }
+        init_params = {k: v for k, v in init_params.items() if v is not None}
+        if not mt5.initialize(**init_params):
+            logger.error(f"❌ Falha ao sincronizar: MT5 não inicializado {mt5.last_error()}")
+            return
+
+    try:
+        # Busca trades desde o início do dia
+        from_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        to_date = datetime.now() + timedelta(minutes=1)
+        
+        deals = mt5.history_deals_get(from_date, to_date)
+        if not deals:
+            logger.info("✅ Nenhum deal encontrado para sincronizar hoje.")
+            return
+
+        for deal in deals:
+            # FILTRO CRÍTICO: Somente Ações B3 (conforme MONITORED_SYMBOLS)
+            if deal.symbol not in config.MONITORED_SYMBOLS:
+                continue
+
+            # Entry 0 = IN (Abertura), 1 = OUT (Fechamento)
+            if deal.entry == 0: # Entrada
+                save_trade(
+                    symbol=deal.symbol,
+                    side="BUY" if deal.type == mt5.ORDER_TYPE_BUY else "SELL",
+                    volume=deal.volume,
+                    entry_price=deal.price,
+                    ticket=deal.position_id, # Usamos position_id para agrupar entry/exit
+                    timestamp=datetime.fromtimestamp(deal.time)
+                )
+            elif deal.entry == 1 or deal.entry == 2: # Saída ou In/Out
+                # Para saída, atualizamos o registro existente
+                save_trade(
+                    symbol=deal.symbol,
+                    side="BUY" if deal.type == mt5.ORDER_TYPE_BUY else "SELL",
+                    volume=deal.volume,
+                    entry_price=0, # Não usado no update
+                    exit_price=deal.price,
+                    pnl_money=deal.profit + deal.commission + deal.swap,
+                    ticket=deal.position_id,
+                    exit_time=datetime.fromtimestamp(deal.time)
+                )
+
+        logger.info(f"✅ Sincronização concluída: {len(deals)} deals processados.")
+    except Exception as e:
+        logger.error(f"❌ Erro na sincronização: {e}")
+
+
 def get_trades_since(start_time: datetime):
     init_db()
     migrate_db()
+    
+    # Sincroniza antes de buscar para garantir winrate real no relatório
+    try:
+        sync_trades_from_mt5()
+        cleanup_invalid_symbols() # Garante que nada estranho ficou no banco
+    except Exception as e:
+        logger.warning(f"⚠️ Sincronização falhou antes de get_trades_since: {e}")
 
     if not isinstance(start_time, datetime):
         raise TypeError("start_time deve ser datetime")

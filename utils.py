@@ -5685,6 +5685,26 @@ def validate_stops_level(symbol: str, side: str, price: float, sl: float, tp: fl
     return sl, tp
 
 
+def calculate_volatility_bands(df: pd.DataFrame, period: int = 20, num_std: float = 2.0):
+    """
+    Calcula bandas de volatilidade dinâmicas (Desvio Padrão).
+    Fórmula: Média Móvel +/- (N * Desvio Padrão)
+    """
+    if df is None or len(df) < period:
+        return None
+    
+    close = df['close']
+    basis = close.rolling(window=period).mean()
+    dev = num_std * close.rolling(window=period).std()
+    
+    return {
+        "upper": basis.iloc[-1] + dev.iloc[-1],
+        "lower": basis.iloc[-1] - dev.iloc[-1],
+        "basis": basis.iloc[-1],
+        "sd": dev.iloc[-1] / num_std if num_std != 0 else 0
+    }
+
+
 def calculate_dynamic_sl_tp(symbol, side, entry_price, ind):
     atr = ind.get("atr", 0.10)
     adx = ind.get("adx", 20)
@@ -5721,6 +5741,8 @@ def calculate_dynamic_sl_tp(symbol, side, entry_price, ind):
         tp_mult = max(1.8, tp_mult * 0.8)
     if is_fut:
         df = safe_copy_rates(symbol, mt5.TIMEFRAME_M5, 100)
+        vbands = calculate_volatility_bands(df, 20, 2.0) if is_valid_dataframe(df, 20) else None
+        
         if is_valid_dataframe(df, 20):
             sl = calculate_smart_sl(symbol, entry_price, side, atr, df)
         else:
@@ -5730,18 +5752,29 @@ def calculate_dynamic_sl_tp(symbol, side, entry_price, ind):
                 if side == "BUY"
                 else (entry_price + atr * base_sl_mult)
             )
-        if side == "BUY":
-            tp = entry_price + (atr * tp_mult)
+            
+        # Alinhamento Volatilidade (Bands)
+        target_tp = entry_price + (atr * tp_mult) if side == "BUY" else entry_price - (atr * tp_mult)
+        if vbands:
+            # Se as bandas estão muito estreitas ou largas, ajustamos o alvo
+            if side == "BUY":
+                tp = max(target_tp, vbands["upper"]) if regime == "TRENDING" else vbands["upper"]
+            else:
+                tp = min(target_tp, vbands["lower"]) if regime == "TRENDING" else vbands["lower"]
         else:
-            tp = entry_price - (atr * tp_mult)
+            tp = target_tp
     else:
         sl_mult = float(getattr(config, "SL_ATR_MULTIPLIER", 2.0) or 2.0)
+        # Para ações, usamos o ATR mas conferimos com bandas diárias se disponível
+        df_d1 = safe_copy_rates(symbol, mt5.TIMEFRAME_D1, 30)
+        vbands = calculate_volatility_bands(df_d1, 20, 2.0) if is_valid_dataframe(df_d1, 20) else None
+        
         if side == "BUY":
             sl = entry_price - (atr * sl_mult)
-            tp = entry_price + (atr * tp_mult)
+            tp = vbands["upper"] if vbands and vbands["upper"] > entry_price else entry_price + (atr * tp_mult)
         else:
             sl = entry_price + (atr * sl_mult)
-            tp = entry_price - (atr * tp_mult)
+            tp = vbands["lower"] if vbands and vbands["lower"] < entry_price else entry_price - (atr * tp_mult)
     sl = round(sl / tick_size) * tick_size
     tp = round(tp / tick_size) * tick_size
 

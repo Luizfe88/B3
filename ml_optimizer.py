@@ -415,28 +415,52 @@ class EnsembleOptimizer:
                 logger.warning("Dados inválidos para treinamento")
                 return
 
-            # ✅ Treina com Cross-Validation (5-fold)
-            if not KFoldCls:
-                logger.warning("KFold indisponível")
-                return
-            kf = KFoldCls(n_splits=5, shuffle=True, random_state=42)
+            # ✅ WALK-FORWARD ANALYSIS (Sliding Window) instead of KFold
+            # Ordena por timestamp para garantir ordem cronológica
+            df_sorted = df.sort_values("timestamp")
+            indices = np.arange(len(df_sorted))
+            
+            # Janelas: 70% treino, 30% teste deslizante
+            n_samples = len(df_sorted)
+            n_splits = 5
+            test_size = n_samples // (n_splits + 1)
+            
+            lmbda = getattr(config, "COMPLEXITY_PENALTY_LAMBDA", 0.01)
 
             for name, model in self.models.items():
                 try:
-                    # Roda 5-fold CV e loga o score médio
                     scores = []
                     if name == "rf":
-                        logger.info("🏃 RandomForest: treino iniciado")
-                    for train_index, val_index in kf.split(X_scaled):
-                        X_train, X_val = X_scaled[train_index], X_scaled[val_index]
-                        y_train, y_val = y[train_index], y[val_index]
+                        logger.info("🏃 RandomForest: WFA iniciado")
+                    
+                    for i in range(n_splits):
+                        train_end = n_samples - (n_splits - i) * test_size
+                        test_end = train_end + test_size
+                        
+                        train_idx = indices[:train_end]
+                        test_idx = indices[train_end:test_end]
+                        
+                        X_train, X_val = X_scaled[train_idx], X_scaled[test_idx]
+                        y_train, y_val = y[train_idx], y[test_idx]
+                        
                         model.fit(X_train, y_train)
-                        scores.append(model.score(X_val, y_val))
+                        raw_score = model.score(X_val, y_val)
+                        
+                        # Complexity Penalty
+                        # RandomForest: penaliza profundidade e número de estimadores
+                        complexity = 0
+                        if name == "rf":
+                            complexity = (model.n_estimators / 100) + (model.max_depth or 10) / 5
+                        elif name == "xgb":
+                            complexity = (model.n_estimators / 100) + (model.max_depth or 6) / 3
+                            
+                        adjusted_score = raw_score - (lmbda * complexity)
+                        scores.append(adjusted_score)
 
                     # Treina final no dado completo
                     model.fit(X_scaled, y)
                     logger.info(
-                        f"✅ Modelo {name} treinado (CV Score Médio: {np.mean(scores):.4f})"
+                        f"✅ Modelo {name} treinado via WFA (Score Ajustado Médio: {np.mean(scores):.4f})"
                     )
                     if name == "rf":
                         logger.info("✅ RandomForest: treino concluído")
@@ -512,6 +536,62 @@ class EnsembleOptimizer:
 
         except Exception as e:
             logger.error(f"Erro ao prever score: {e}")
+            return 0.0
+
+    # ========================
+    # ✅ NOVO: KNN FILTERING (Pilar 1: Filtragem de Ruído)
+    # ========================
+    def _features_to_vec(self, features: dict) -> np.array:
+        """Converte dicionário de features em vetor numérico consistente."""
+        try:
+            # Seleciona apenas as features numéricas que usamos no treinamento
+            # Se já termos um scaler, podemos usar as colunas dele
+            df_feat = pd.DataFrame([features])
+            numeric_cols = df_feat.select_dtypes(include=[np.number]).columns
+            vec = df_feat[numeric_cols].fillna(0).values[0]
+            return vec
+        except:
+            return np.zeros(10)
+
+    def knn_predict_expected_return(self, current_features: dict, k: int = 7) -> float:
+        """
+        Busca os k cenários históricos mais próximos e retorna o PnL médio.
+        Serve como um filtro de 'vizinhança' para evitar ruído.
+        """
+        try:
+            if len(self.history) < 20:
+                return 0.0
+            
+            # Prepara dados históricos
+            hist_features = []
+            hist_pnls = []
+            for t in self.history[-500:]:
+                if "features" in t and "pnl_pct" in t:
+                    v = self._features_to_vec(t["features"])
+                    hist_features.append(v)
+                    hist_pnls.append(t["pnl_pct"])
+            
+            if len(hist_features) < k:
+                return 0.0
+            
+            curr_v = self._features_to_vec(current_features)
+            X_hist = np.array(hist_features)
+            
+            # Normalização rápida
+            mean = X_hist.mean(axis=0)
+            std = X_hist.std(axis=0) + 1e-6
+            X_hist_norm = (X_hist - mean) / std
+            curr_v_norm = (curr_v - mean) / std
+            
+            # Distâncias
+            distances = np.linalg.norm(X_hist_norm - curr_v_norm, axis=1)
+            nearest_idx = np.argsort(distances)[:k]
+            
+            avg_pnl = np.mean([hist_pnls[i] for i in nearest_idx])
+            return float(avg_pnl)
+            
+        except Exception as e:
+            logger.error(f"Erro no KNN filtering: {e}")
             return 0.0
 
     # ========================
