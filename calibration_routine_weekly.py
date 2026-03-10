@@ -36,7 +36,9 @@ def run_weekly_calibration():
         logger.info(f"✅ Calibração concluída com sucesso! Duração: {duration}")
         
     except Exception as e:
+        import traceback
         logger.error(f"❌ Erro crítico na rotina semanal: {e}")
+        logger.error(traceback.format_exc())
         sys.exit(1)
 
 if __name__ == "__main__":

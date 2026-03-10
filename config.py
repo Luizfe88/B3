@@ -133,6 +133,10 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or config.get("telegram", {
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID") or config.get("telegram", {}).get("chat_id")
 ENABLE_TELEGRAM_NOTIF = os.getenv("ENABLE_TELEGRAM_NOTIF", "").lower() == "true" or config.get("telegram", {}).get("enabled", False)
 
+# Liquidity Funnel
+SCAN_MODE = config.get("SCAN_MODE", "SCAN_ALL")
+ADV_THRESHOLD = config.get("ADV_THRESHOLD", 5000000)
+
 # Variáveis dinâmicas do sistema adaptativo
 ADAPTIVE_ML_THRESHOLD = ML_CONFIDENCE_BASE
 ADAPTIVE_KELLY_MULTIPLIER = 1.0
@@ -290,10 +294,10 @@ SECTOR_MAP = {
     "PSSA3": "SEGUROS",
     "IRBR3": "SEGUROS",
     # "SULA11": "SEGUROS", # Delisted
+    "PINE4": "FINANCEIRO",
     "CIEL3": "FINANCEIRO",
     "CASH3": "FINANCEIRO",
     "BMGB4": "FINANCEIRO",
-    "PINE4": "FINANCEIRO",
     # ==========================================
     # 🛢️ ENERGIA E PETRÓLEO (Óleo e Gás)
     # ==========================================
@@ -317,8 +321,8 @@ SECTOR_MAP = {
     "ENEV3": "UTILIDADE_PUBLICA",
     "CPLE6": "UTILIDADE_PUBLICA",
     "CMIG4": "UTILIDADE_PUBLICA",
-    "TAEE11": "UTILIDADE_PUBLICA",
     "TRPL4": "UTILIDADE_PUBLICA",
+    "TAEE11": "UTILIDADE_PUBLICA",
     "ALUP11": "UTILIDADE_PUBLICA",
     "EGIE3": "UTILIDADE_PUBLICA",
     "NEOE3": "UTILIDADE_PUBLICA",
@@ -368,14 +372,14 @@ SECTOR_MAP = {
     # ==========================================
     # 🛒 VAREJO E CONSUMO
     # ==========================================
-    "MGLU3": "VAREJO",
     "BHIA3": "VAREJO",
+    "GUAR3": "VAREJO",
     "LREN3": "VAREJO",
     "CEAB3": "VAREJO",
     "AZZA3": "VAREJO", # Now AREZZO + SOMA
     # "ARZZ3": "VAREJO", # Delisted
     # "SOMA3": "VAREJO", # Delisted
-    "GUAR3": "VAREJO",
+    # "GUAR3": "VAREJO",
     "AMER3": "VAREJO",
     # "PETZ3": "VAREJO", # Delisted/Merged
     "ALPA4": "VAREJO",
@@ -435,16 +439,16 @@ SECTOR_MAP = {
     # ==========================================
     "RENT3": "LOGISTICA",
     "RAIL3": "LOGISTICA",
-    "CCRO3": "LOGISTICA",
     "ECOR3": "LOGISTICA",
     "STBP3": "LOGISTICA",
+    "CCRO3": "LOGISTICA",
     "JSLG3": "LOGISTICA",
     "VAMO3": "LOGISTICA",
     "TGMA3": "LOGISTICA",
     "HBSA3": "LOGISTICA",
-    "PORT3": "LOGISTICA",
     "SEQL3": "LOGISTICA",
     "AZUL4": "AVIAÇÃO",
+    "PORT3": "LOGISTICA",
     "GOLL54": "AVIAÇÃO",
     "EMBR3": "AEROESPACIAL",
     # ==========================================

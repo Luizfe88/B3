@@ -108,3 +108,9 @@ telegram:
   enabled: True
   bot_token: "" # Insira seu Bot Token aqui ou no .env
   chat_id: ""   # Insira seu Chat ID aqui ou no .env
+
+# -- LIQUIDITY FUNNEL --
+# SCAN_ALL: Processa todos os ativos do Market Watch que passarem no ADV
+# INDEX_ONLY: Foca apenas em componentes do IBOV/IBRX 100
+SCAN_MODE: "SCAN_ALL"
+ADV_THRESHOLD: 5000000 # R$ 5 milhões/dia

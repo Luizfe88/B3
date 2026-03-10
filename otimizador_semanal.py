@@ -358,6 +358,7 @@ COMMODITY_SYMBOLS = {
     "ENEV3",
 }
 REJECT_SKIP = set()
+_S_MAP_SYNCED = False # Global flag to ensure sync runs only once per session
 print("[DEBUG] Importando warnings...", flush=True)
 import warnings
 
@@ -397,6 +398,10 @@ BARS_TO_LOAD = 4000 if SANDBOX_MODE else 5000
 # ===========================
 def sync_sector_map_to_mt5():
     """Garante que todos os ativos do SECTOR_MAP estejam visíveis no MT5."""
+    global _S_MAP_SYNCED
+    if _S_MAP_SYNCED:
+        return
+
     if not mt5 or not mt5.terminal_info().connected:
         logger.warning("MT5 não conectado, impossível sincronizar símbolos.")
         return
@@ -427,12 +432,14 @@ def sync_sector_map_to_mt5():
 
         # 4. Adicionar cada símbolo ausente (com retentativas para erro -1)
         added_count = 0
+        skipped_unavailable = 0
         import time
         for symbol in missing_symbols:
-            # --- NOVO: Verifica se o símbolo existe no servidor antes de tentar selecionar ---
+            # --- VERIFICAÇÃO SILENCIOSA: Verifica se o símbolo existe no servidor ---
             sym_info = mt5.symbol_info(symbol)
             if sym_info is None:
-                logger.info(f"⏭️ Símbolo '{symbol}' não encontrado no MT5. Pulando.")
+                # Símbolo não existe na corretora (legítimo para alguns ativos da B3 dependendo da conta)
+                skipped_unavailable += 1
                 continue
             
             success = False
@@ -449,16 +456,20 @@ def sync_sector_map_to_mt5():
                     time.sleep(wait)
                     continue
                 else:
-                    # Outro erro
-                    logger.error(f"Falha ao adicionar o símbolo '{symbol}' ao Market Watch. Erro: {err}")
+                    # Outro erro (logamos apenas se for erro real, não "not found")
+                    logger.debug(f"Falha ao adicionar o símbolo '{symbol}' ao Market Watch. Erro: {err}")
                     break
             
             if not success and mt5.last_error()[0] == -1:
-                 logger.error(f"Símbolo '{symbol}' falhou após 3 tentativas (Terminal: Call failed). Pulando.")
+                 logger.error(f"Símbolo '{symbol}' falhou após 3 tentativas (Terminal: Call failed).")
 
+        if skipped_unavailable > 0:
+            logger.info(f"ℹ️ {skipped_unavailable} símbolos do SECTOR_MAP não estão disponíveis nesta corretora e foram ignorados.")
+        
         logger.info(
-            f"✅ {added_count} de {len(missing_symbols)} símbolos foram adicionados com sucesso."
+            f"✅ {added_count} símbolos novos adicionados ao Market Watch com sucesso."
         )
+        _S_MAP_SYNCED = True
 
     except Exception as e:
         logger.error(
@@ -477,8 +488,9 @@ def ensure_mt5_connection() -> bool:
         terminal = mt5.terminal_info()
         if terminal and terminal.connected:
             logger.info("[OK] MT5 conectado (Tenacity OK)")
-            # Sincroniza os símbolos logo após conectar
-            sync_sector_map_to_mt5()
+            # Sincroniza os símbolos logo após conectar (apenas uma vez)
+            if not _S_MAP_SYNCED:
+                sync_sector_map_to_mt5()
             return True
         return False
     except Exception as e:
@@ -517,27 +529,74 @@ def try_mt5_connection(timeout_seconds: int = 10) -> bool:
 # ===========================
 # AUXILIARES DE OTIMIZAÇÃO
 # ===========================
+def get_index_components() -> Set[str]:
+    """Obtém componentes do IBOV e IBRX 100 via MT5 ou Fallback"""
+    components = set()
+    if not mt5:
+        return components
+
+    # Tenta via grupos do MT5 (Padrão B3)
+    groups = ["*IBOV*", "*IBXX*", "*IBRX*"]
+    for group in groups:
+        syms = mt5.symbols_get(group=group)
+        if syms:
+            for s in syms:
+                if not utils.is_future(s.name):
+                    components.add(s.name)
+
+    # Fallback: Se vazio, usa as listas de ELITE e OPORTUNIDADE do utils
+    if not components:
+        logger.info("[INFO] Usando fallback institucional (ELITE/OPORTUNIDADE) do utils.py")
+        from utils import ELITE_SYMBOLS, OPORTUNIDADE_SYMBOLS
+        components.update(ELITE_SYMBOLS)
+        components.update(OPORTUNIDADE_SYMBOLS)
+
+    return {c.upper() for c in components}
 def load_all_symbols() -> List[str]:
     """
     Retorna lista de ativos a otimizar.
+    Se SCAN_MODE=INDEX_ONLY, filtra apenas componentes IBOV/IBRX.
     Se XP3_LOAD_ALL_MT5=1, pega tudo do Market Watch.
     Caso contrário, usa SECTOR_MAP.
     """
+    scan_mode = getattr(config, "SCAN_MODE", "SCAN_ALL")
     symbols = []
-    if os.getenv("XP3_LOAD_ALL_MT5", "0") == "1" and mt5 and mt5.terminal_info().connected:
-        all_mkt = mt5.symbols_get()
-        if all_mkt:
-            # Filtra apenas o que está visível (Market Watch)
-            symbols = [s.name for s in all_mkt if s.visible]
-    
+
+    if os.getenv("XP3_LOAD_ALL_MT5", "0") == "1" and mt5:
+        info = mt5.terminal_info()
+        if info is not None and info.connected:
+            all_mkt = mt5.symbols_get()
+            if all_mkt:
+                # Filtra apenas o que está visível (Market Watch)
+                symbols = [s.name for s in all_mkt if s.visible]
+
     if not symbols:
         symbols = list(SECTOR_MAP.keys())
 
-    # Filtro opcional para ignorar índices futuros (WIN, WDO)
-    if os.getenv("XP3_IGNORE_FUTURES", "0") == "1":
-        symbols = [s for s in symbols if not utils.is_future(s)]
-    
-    return sorted(list(set(symbols)))
+    # ✅ Filtro INDEX_ONLY (Whitelist Institucional)
+    if scan_mode == "INDEX_ONLY":
+        index_comps = get_index_components()
+        if index_comps:
+            old_count = len(symbols)
+            symbols = [s for s in symbols if s.upper() in index_comps]
+            logger.info(f"🏛️ [INDEX_ONLY] Filtrado de {old_count} para {len(symbols)} ativos (IBOV/IBRX)")
+
+    # ✅ Priorização por Whitelist Elite (Natural Selection)
+    try:
+        elite_path = "whitelist_elite.json"
+        if os.path.exists(elite_path):
+            with open(elite_path, 'r', encoding='utf-8') as f:
+                elite_whitelist = json.load(f)
+            if elite_whitelist:
+                # Reordena symbols colocando os elite no início
+                elite_present = [s for s in symbols if s.upper() in [e.upper() for e in elite_whitelist]]
+                others = [s for s in symbols if s.upper() not in [e.upper() for e in elite_whitelist]]
+                symbols = elite_present + others
+                logger.info(f"🏆 [ELITE] Priorizando {len(elite_present)} ativos da Seleção Natural no carregamento.")
+    except Exception as e:
+        logger.error(f"Erro ao carregar elite_whitelist: {e}")
+
+    return symbols
 
 
 def get_symbols():
@@ -739,7 +798,7 @@ def filter_correlated_assets(final_elite: dict, threshold: float = 0.70) -> dict
     if len(data) < 2:
         return final_elite
     df_curves = pd.DataFrame(dict([(k, pd.Series(v)) for k, v in data.items()]))
-    df_curves = df_curves.fillna(method="ffill").dropna()
+    df_curves = df_curves.ffill().dropna()
     if df_curves is None or df_curves.empty:
         return final_elite
     df_returns = df_curves.pct_change().dropna()
@@ -1123,35 +1182,19 @@ def check_liquidity_dynamic(sym: str, ibov_df: pd.DataFrame = None) -> dict:
                     elif "tick_volume" in dfm.columns:
                         dfm = dfm.rename(columns={"tick_volume": "volume"})
                     df_d1 = dfm[["open", "high", "low", "close", "volume"]]
-            except Exception:
+            except Exception as e:
+                logger.error(f"❌ Erro ao obter dados D1 para liquidez de {sym} via MT5: {e}")
                 df_d1 = None
-        if df_d1 is None or df_d1.empty:
-            try:
-                df_d1 = _polygon_aggs_df(
-                    _polygon_ticker(sym), "day", 1, start, today, 1000, api_key
-                )
-            except Exception:
-                df_d1 = None
-        if df_d1 is None or df_d1.empty:
-            import logging as _logging
 
-            try:
-                _logging.getLogger("yfinance").setLevel(_logging.CRITICAL)
-            except Exception:
-                pass
-            ok, res = safe_call_with_timeout(
-                _yahoo_history, 2, sym, interval="1d", period="365d"
-            )
-            df_d1 = res if ok else None
-            if df_d1 is None or (hasattr(df_d1, "empty") and df_d1.empty):
-                REJECT_SKIP.add(sym)
-                return False, "SEM_DADOS_D1", {}
+        if df_d1 is None or df_d1.empty:
+            REJECT_SKIP.add(sym)
+            return False, "SEM_DADOS_MT5_D1", {}
+
         df_liq = df_d1.tail(20)
         avg_vol_shares = float(df_liq["volume"].mean() or 0.0)
         avg_price = float(df_liq["close"].mean() or 0.0)
         avg_fin_vol = avg_vol_shares * avg_price
-        elite_blue = getattr(config, "ELITE_BLUE_CHIPS", []) if config else []
-        MIN_FINANCEIRO = 100_000_000 if sym in elite_blue else 10_000_000
+        MIN_FINANCEIRO = getattr(config, "ADV_THRESHOLD", 5_000_000)
         if SANDBOX_MODE:
             MIN_FINANCEIRO = 0
         is_liquid = avg_fin_vol >= MIN_FINANCEIRO
@@ -1219,6 +1262,14 @@ def check_liquidity_dynamic(sym: str, ibov_df: pd.DataFrame = None) -> dict:
                 float(np.mean(df_m15["close"].values[-50:])), 1e-9
             )
             adx_threshold = 18 if avg_atr_pct < 0.005 else 22
+        # ✅ NOVO: Remoção do MT5 se não for líquido (exceto índices futuros)
+        if not is_liquid and mt5:
+            # Índices futuros que se mantêm no mt5
+            keep_futures = {'WIN$N','IND$N','WSP$N','WDO$N','DOL$N','CCM$N','BGI$N','ICF$N','BIT$N','DI1$N'}
+            if sym not in keep_futures:
+                logger.info(f"🗑️ [FUNIL] Removendo {sym} do Market Watch (L={avg_fin_vol:,.0f} < {MIN_FINANCEIRO:,.0f})")
+                mt5.symbol_select(sym, False)
+
         return (
             is_liquid,
             reason,
@@ -1355,6 +1406,7 @@ def open_all_mt5_symbols() -> int:
     if failed > 0:
         print(f"[WARN] {failed} símbolos falharam")
 
+    time.sleep(1) # Delay antes de processar
     return added
 
 
@@ -1488,27 +1540,47 @@ def sync_market_watch_with_sector_map(clear_first: bool = True) -> bool:
 def load_data_with_retry(
     symbol: str, bars: int, timeframe=None, max_retries: int = 1
 ) -> Optional[pd.DataFrame]:
-    logger.info(f"📥 [DADOS] Carregando {symbol} (fallback Polygon/Yahoo)")
+    logger.info(f"📥 [DADOS] Carregando {symbol} STRICTamente via MT5 em {timeframe or 'M15'}")
     s = (symbol or "").upper().strip()
-    is_fut = s.endswith("$") or s.startswith(("WIN", "WDO", "IND", "DOL"))
-    if is_fut:
-        try:
-            if ensure_mt5_connection():
-                tf = (
-                    mt5.TIMEFRAME_M15
-                    if timeframe in (None, "M15")
-                    else mt5.TIMEFRAME_D1
-                )
-                mt5.symbol_select(s, True)
-                rates = mt5.copy_rates_from_pos(s, tf, 0, max(bars, 100))
-                if rates:
-                    df = pd.DataFrame(rates)
-                    df["time"] = pd.to_datetime(df["time"], unit="s")
-                    df.set_index("time", inplace=True)
-                    return df.tail(bars).sort_index()
-        except Exception:
-            pass
-    return load_data_polygon(symbol, bars, timeframe)
+    
+    try:
+        if ensure_mt5_connection():
+            # Mapeamento robusto de timeframes para MT5
+            tf_map = {
+                "M1": mt5.TIMEFRAME_M1,
+                "M5": mt5.TIMEFRAME_M5,
+                "M15": mt5.TIMEFRAME_M15,
+                "M30": mt5.TIMEFRAME_M30,
+                "H1": mt5.TIMEFRAME_H1,
+                "D1": mt5.TIMEFRAME_D1
+            }
+            tf = tf_map.get(timeframe, mt5.TIMEFRAME_M15)
+            
+            # Garante que o símbolo está no Market Watch
+            if not mt5.symbol_select(s, True):
+                logger.error(f"❌ {s}: Não foi possível selecionar o símbolo no MT5.")
+                return None
+                
+            rates = mt5.copy_rates_from_pos(s, tf, 0, max(bars, 100))
+            if rates is not None and len(rates) > 0:
+                df = pd.DataFrame(rates)
+                df["time"] = pd.to_datetime(df["time"], unit="s")
+                df.set_index("time", inplace=True)
+                
+                # Tratamento de volumes (prioriza real_volume se existir)
+                if "real_volume" in df.columns and df["real_volume"].sum() > 0:
+                    df = df.rename(columns={"real_volume": "volume"})
+                elif "tick_volume" in df.columns:
+                    df = df.rename(columns={"tick_volume": "volume"})
+                
+                return df.tail(bars).sort_index()
+            else:
+                logger.warning(f"⚠️ {s}: MT5 retornou zero taxas para {timeframe or 'M15'}.")
+    except Exception as e:
+        logger.error(f"❌ Erro ao carregar dados de {s} via MT5: {e}")
+        
+    return None
+
 
 
 def load_data_polygon(symbol: str, bars: int, timeframe=None) -> Optional[pd.DataFrame]:
@@ -1518,24 +1590,35 @@ def load_data_polygon(symbol: str, bars: int, timeframe=None) -> Optional[pd.Dat
         end = date.today()
         start = (end - timedelta(days=365 * 2)).strftime("%Y-%m-%d")
         end_s = end.strftime("%Y-%m-%d")
-        ts = (
-            "minute"
-            if timeframe is None
-            else ("minute" if timeframe == "M15" else "day")
-        )
+        
+        # Mapeamento para Polygon e Yahoo
+        if timeframe == "M5":
+            ts = "minute"
+            mult = 5
+            interval_yahoo = "5m"
+        elif timeframe == "M30":
+            ts = "minute"
+            mult = 30
+            interval_yahoo = "30m"
+        elif timeframe == "D1":
+            ts = "day"
+            mult = 1
+            interval_yahoo = "1d"
+        else: # Default M15
+            ts = "minute"
+            mult = 15
+            interval_yahoo = "15m"
+
         # Primeiro tenta Yahoo (rápido e robusto)
         try:
-            if ts == "minute":
-                ydf = _yahoo_history(symbol, interval="15m", period="60d")
-            else:
-                ydf = _yahoo_history(symbol, interval="1d", period="365d")
+            ydf = _yahoo_history(symbol, interval=interval_yahoo, period="60d" if ts == "minute" else "365d")
             if ydf is not None and len(ydf) >= 100:
                 return ydf.tail(bars).sort_index()
         except Exception:
             pass
+            
         # Fallback Polygon com timeout curto
         api_key = os.getenv("POLYGON_API_KEY", "xrE09LEWJYBZfQcV57pCvsw4aqkOiqbz")
-        mult = 15 if ts == "minute" else 1
         df = _polygon_aggs_df(
             _polygon_ticker(symbol), ts, mult, start, end_s, max(bars, 500), api_key
         )
@@ -2051,398 +2134,146 @@ def worker_wfo(
     test_period: int,
     basket_id: int = 1,
 ) -> Dict[str, Any]:
-    """Worker WFO com reconexão MT5 automática"""
-    out = {"symbol": sym, "status": "ok", "wfo_windows": []}
+    """Worker WFO com restrição de timeframe por cluster e seleção do melhor"""
+    
+    # 1. Define timeframes permitidos por cluster
+    if basket_id == 0: # Cluster A (Alta Liquidez - IBOV)
+        permitted_tf = ["M5", "M15"]
+    elif basket_id == 1: # Cluster B (Mid-Caps)
+        permitted_tf = ["M15", "M30"]
+    else: # Cluster C (Baixa Liquidez)
+        permitted_tf = ["M30"] # Foco em suavização para ativos esburacados
+        
+    best_tf_results = None
+    best_tf_score = -1e9
+    best_tf_name = permitted_tf[0]
 
-    try:
-        df_full = load_data_polygon(sym, bars)
+    logger.info(f"🚀 {sym}: Iniciando WFO nos timeframes {permitted_tf} (Cesta {basket_id})")
 
-        if not is_valid_dataframe(df_full):
-            return {"symbol": sym, "error": "no_data"}
+    for tf in permitted_tf:
+        try:
+            logger.info(f"⏳ {sym}: Testando timeframe {tf}...")
+            # Usa load_data_with_retry que suporta timeframes variados
+            df_full = load_data_with_retry(sym, bars, timeframe=tf)
 
-        df_full = df_full.sort_index()
-        n = len(df_full)
-
-        if n < (train_period + test_period):
-            return {"symbol": sym, "error": "insufficient_data"}
-
-        step = test_period
-        wins = []
-
-        for i in range(wfo_windows):
-            train_start = i * step
-            train_end = train_start + train_period
-            test_end = train_end + test_period
-
-            if test_end > n:
-                break
-
-            df_train = df_full.iloc[train_start:train_end].copy()
-            df_test = df_full.iloc[train_end:test_end].copy()
-
-            if df_train.empty or df_test.empty:
+            if not is_valid_dataframe(df_full):
+                logger.warning(f"⚠️ {sym}: Sem dados válidos para {tf}")
                 continue
 
-            ml_model = None
-            best_params = {}
+            df_full = df_full.sort_index()
+            n = len(df_full)
 
-            try:
-                from optimizer_optuna import optimize_with_optuna, backtest_params_on_df
+            # Ajuste dinâmico de train/test para timeframes maiores se necessário
+            curr_train = train_period
+            curr_test = test_period
+            if tf == "M30":
+                curr_train = max(train_period // 2, 500)
+                curr_test = max(test_period // 2, 100)
 
-                # ✅ Optional: Retrain ML Model per Fold if desired (Uncomment to enable)
-                # from optimizer_optuna import train_ml_signal_boost
-                # ml_model_fold = train_ml_signal_boost(df_train)
-                # But optimize_with_optuna already trains it internally on df_train passed to it.
-                # Use that model.
+            if n < (curr_train + curr_test):
+                logger.warning(f"⚠️ {sym}: Dados insuficientes para {tf} ({n} < {curr_train + curr_test})")
+                continue
 
-                if os.getenv("XP3_DISABLE_OPTUNA", "0") == "1":
-                    res = {
-                        "status": "NO_VALID_TRIALS",
-                        "reason": "disabled_by_env",
-                        "best_params": {},
-                        "ml_model": None,
-                    }
-                else:
-                    logger.info(
-                        f"🧪 {sym}: Janela {i+1}/{wfo_windows} - Iniciando Optuna..."
-                    )
-                    res = optimize_with_optuna(
-                        sym, df_train, n_trials=250, timeout=3600, basket_id=basket_id
-                    )
+            step = curr_test
+            tf_wins = []
 
-                if res.get("status") == "SUCCESS":
-                    best_params = res.get("best_params", {})
-                    ml_model = res.get("ml_model", None)
-                    logger.info(f"{sym}: ✅ Parâmetros otimizados: {best_params}")
-                    try:
-                        if _is_generic_params(best_params):
-                            logger.warning(
-                                f"🔍 {sym}: Parâmetros genéricos detectados, expandindo busca..."
-                            )
-                            df_ext = df_full.iloc[-max(test_period * 4, 800) :]
-                            ema_short_grid = list(range(8, 31, 3))
-                            ema_long_grid = [60, 72, 90, 110, 125, 140]
-                            best = None
-                            for es in ema_short_grid:
-                                for el in ema_long_grid:
-                                    cparams = dict(best_params)
-                                    cparams["ema_short"] = es
-                                    cparams["ema_long"] = el
-                                    m2 = backtest_params_on_df(sym, cparams, df_ext)
-                                    score2 = float(m2.get("calmar", 0.0) or 0.0)
-                                    if (best is None) or (score2 > best[0]):
-                                        best = (score2, cparams)
-                            if best is not None:
-                                best_params = best[1]
-                    except Exception:
-                        pass
-                else:
-                    reason = res.get("reason", res.get("status", "Unknown"))
-                    logger.warning(
-                        f"{sym}: ⚠️ Optuna sem resultado válido nesta janela ({reason})"
-                    )
-                    if len(wins) > 0:
-                        logger.warning(
-                            f"{sym}: Usando parâmetros da melhor janela anterior"
-                        )
-                        best_params = wins[-1]["best_params"]
-                        ml_model = wins[-1].get("ml_model")
+            for i in range(wfo_windows):
+                train_start = i * step
+                train_end = train_start + curr_train
+                test_end = train_end + curr_test
+
+                if test_end > n:
+                    break
+
+                df_train = df_full.iloc[train_start:train_end].copy()
+                df_test = df_full.iloc[train_end:test_end].copy()
+
+                if df_train.empty or df_test.empty:
+                    continue
+
+                try:
+                    from optimizer_optuna import optimize_with_optuna, backtest_params_on_df
+                    
+                    if os.getenv("XP3_DISABLE_OPTUNA", "0") == "1":
+                        res = {"status": "NO_VALID_TRIALS", "best_params": {}}
                     else:
-                        logger.warning(
-                            f"{sym}: Todas trials pruned — forçando grid search estendido"
+                        res = optimize_with_optuna(
+                            sym, df_train, n_trials=maxevals, timeout=1200, basket_id=basket_id
                         )
-                        df_ext = load_data_polygon(sym, 8000)
-                        picked = None
-                        if df_ext is not None and len(df_ext) >= 300:
-                            ema_short_grid = list(range(8, 51, 3))
-                            ema_long_grid = list(range(60, 161, 10))
-                            try:
-                                delta = pd.Series(df_ext["close"]).diff()
-                                gain = (
-                                    (delta.where(delta > 0, 0))
-                                    .rolling(window=14)
-                                    .mean()
-                                )
-                                loss = (
-                                    (-delta.where(delta < 0, 0))
-                                    .rolling(window=14)
-                                    .mean()
-                                )
-                                rs = gain / (loss + 1e-10)
-                                rsi_series = (100 - (100 / (1 + rs))).fillna(50).values
-                                rsi_low_dyn = int(
-                                    np.clip(
-                                        np.percentile(rsi_series[-150:], 30), 25, 40
-                                    )
-                                )
-                                rsi_high_dyn = int(
-                                    np.clip(
-                                        np.percentile(rsi_series[-150:], 70), 60, 85
-                                    )
-                                )
-                                adx_vals_dyn, atr_vals_dyn = calculate_adx(
-                                    df_ext["high"].values,
-                                    df_ext["low"].values,
-                                    df_ext["close"].values,
-                                    period=14,
-                                )
-                                adx_thr_dyn = float(
-                                    np.clip(np.median(adx_vals_dyn[-150:]), 15, 35)
-                                )
-                                vol_proxy = float(
-                                    np.mean(atr_vals_dyn[-150:])
-                                    / max(np.mean(df_ext["close"].values[-150:]), 1e-6)
-                                )
-                                sl_mult_dyn = 3.5 if vol_proxy > 0.02 else 2.5
-                                tp_mult_dyn = 3.0
-                                for es in ema_short_grid:
-                                    for el in ema_long_grid:
-                                        cparams = {
-                                            "ema_short": es,
-                                            "ema_long": el,
-                                            "rsi_low": rsi_low_dyn,
-                                            "rsi_high": rsi_high_dyn,
-                                            "adx_threshold": adx_thr_dyn,
-                                            "mom_min": 0.0,
-                                            "sl_atr_multiplier": sl_mult_dyn,
-                                            "tp_mult": tp_mult_dyn,
-                                        }
-                                        m2 = backtest_params_on_df(sym, cparams, df_ext)
-                                        score2 = float(m2.get("calmar", 0.0) or 0.0)
-                                        if (picked is None) or (score2 > picked[0]):
-                                            picked = (score2, cparams)
-                            except Exception:
-                                picked = None
-                        if picked is not None:
-                            best_params = picked[1]
-                            ml_model = None
-                        else:
-                            elite = (
-                                getattr(config, "ELITE_SYMBOLS", {}) if config else {}
-                            )
-                            if isinstance(elite, dict) and sym in elite:
-                                ep = elite.get(sym) or {}
-                                best_params = {
-                                    "ema_short": int(ep.get("ema_short", 12)),
-                                    "ema_long": int(ep.get("ema_long", 97)),
-                                    "rsi_low": int(ep.get("rsi_low", 37)),
-                                    "rsi_high": int(ep.get("rsi_high", 73)),
-                                    "adx_threshold": float(ep.get("adx_threshold", 13)),
-                                    "sl_atr_multiplier": float(
-                                        ep.get("sl_atr_multiplier", 3.0)
-                                    ),
-                                    "tp_mult": float(ep.get("tp_mult", 3.0)),
-                                }
-                            else:
-                                best_params = _ensure_non_generic(sym, {})
-                            ml_model = None
-            except Exception as e:
-                logger.error(f"{sym}: ❌ OPTUNA FALHOU: {e}")
-                if len(wins) > 0:
-                    logger.warning(
-                        f"{sym}: Usando parâmetros da melhor janela anterior"
-                    )
-                    best_params = wins[-1]["best_params"]
-                    ml_model = wins[-1].get("ml_model")
-                else:
-                    try:
-                        df_use = (
-                            df_full.iloc[-max(test_period * 2, 400) :]
-                            if df_full is not None
-                            else None
-                        )
-                        if df_use is not None and len(df_use) >= 200:
-                            ema_short_grid = list(range(8, 31, 3))
-                            ema_long_grid = [60, 72, 90, 110, 125, 140]
-                            delta = pd.Series(df_use["close"]).diff()
-                            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                            loss = (
-                                (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                            )
-                            rs = gain / (loss + 1e-10)
-                            rsi_series = (100 - (100 / (1 + rs))).fillna(50).values
-                            rsi_low = int(
-                                np.clip(np.percentile(rsi_series[-150:], 30), 25, 40)
-                            )
-                            rsi_high = int(
-                                np.clip(np.percentile(rsi_series[-150:], 70), 60, 85)
-                            )
-                            adx_vals, atr_vals = calculate_adx(
-                                df_use["high"].values,
-                                df_use["low"].values,
-                                df_use["close"].values,
-                                period=14,
-                            )
-                            adx_threshold = float(
-                                np.clip(np.median(adx_vals[-150:]), 15, 35)
-                            )
-                            vol_proxy = float(
-                                np.mean(atr_vals[-150:])
-                                / max(np.mean(df_use["close"].values[-150:]), 1e-6)
-                            )
-                            sl_mult = 3.5 if vol_proxy > 0.02 else 2.5
-                            tp_mult = 3.0
-                            best = None
-                            for es in ema_short_grid:
-                                for el in ema_long_grid:
-                                    cparams = {
-                                        "ema_short": es,
-                                        "ema_long": el,
-                                        "rsi_low": rsi_low,
-                                        "rsi_high": rsi_high,
-                                        "adx_threshold": adx_threshold,
-                                        "mom_min": 0.0,
-                                        "sl_atr_multiplier": sl_mult,
-                                        "tp_mult": tp_mult,
-                                    }
-                                    m = backtest_params_on_df(sym, cparams, df_use)
-                                    score = float(m.get("calmar", 0.0) or 0.0)
-                                    if (best is None) or (score > best[0]):
-                                        best = (score, cparams)
-                            if best is not None:
-                                best_params = best[1]
-                            else:
-                                best_params = _ensure_non_generic(sym, {})
+
+                    if res.get("status") == "SUCCESS":
+                        best_params = res.get("best_params", {})
+                        ml_model = res.get("ml_model", None)
+                    else:
+                        if len(tf_wins) > 0:
+                            best_params = tf_wins[-1]["best_params"]
+                            ml_model = tf_wins[-1].get("ml_model")
                         else:
                             best_params = _ensure_non_generic(sym, {})
-                    except Exception:
-                        elite = getattr(config, "ELITE_SYMBOLS", {}) if config else {}
-                        if isinstance(elite, dict) and sym in elite:
-                            ep = elite.get(sym) or {}
-                            best_params = {
-                                "ema_short": int(ep.get("ema_short", 12)),
-                                "ema_long": int(ep.get("ema_long", 97)),
-                                "rsi_low": int(ep.get("rsi_low", 37)),
-                                "rsi_high": int(ep.get("rsi_high", 73)),
-                                "adx_threshold": float(ep.get("adx_threshold", 13)),
-                                "sl_atr_multiplier": float(
-                                    ep.get("sl_atr_multiplier", 3.0)
-                                ),
-                                "tp_mult": float(ep.get("tp_mult", 3.0)),
-                            }
-                        else:
-                            best_params = _ensure_non_generic(sym, {})
-                    ml_model = None
+                            ml_model = None
 
-            # ✅ Validar no OOS com ML Model se disponível
-            # No bloco de métricas ou logs:
+                    test_res = backtest_params_on_df(sym, best_params, df_test, ml_model=ml_model)
+                    tf_wins.append({
+                        "best_params": best_params,
+                        "ml_model": ml_model,
+                        "test_metrics": test_res,
+                        "equity_curve": test_res.get("equity_curve", [])
+                    })
 
-            test_res = backtest_params_on_df(
-                sym, best_params, df_test, ml_model=ml_model
-            )
-            curve = test_res.get("equity_curve", None)
+                except Exception as e:
+                    logger.error(f"Erro na janela {i} do timeframe {tf} para {sym}: {e}")
 
-            if isinstance(curve, np.ndarray):
-                curve_list = curve.tolist()
-            elif isinstance(curve, list):
-                curve_list = curve
-            else:
-                curve_list = [100000.0]  # Fallback se for string ou None
+            if not tf_wins:
+                continue
 
-            wins.append(
-                {
-                    "best_params": best_params,
-                    "ml_model": ml_model,
-                    "test_metrics": test_res,
-                    "equity_curve": test_res.get("equity_curve", []),
-                }
-            )
+            # Stability Adjusted Sharpe (SAS) - Refinado
+            # Foco: Estabilidade (curva reta) e controle de Drawdown
+            sharpes = [float(w["test_metrics"].get("sharpe", 0.0)) for w in tf_wins]
+            dds = [float(w["test_metrics"].get("max_drawdown", 0.0)) for w in tf_wins]
+            pfs = [float(w["test_metrics"].get("profit_factor", 0.0)) for w in tf_wins]
+            
+            avg_sharpe = np.mean(sharpes)
+            std_sharpe = np.std(sharpes)
+            worst_dd = np.max(dds)
+            avg_pf = np.mean(pfs)
+            
+            # SAS = (Sharpe / (1 + StdDev)) * (1 - MaxDD) * PF_Factor
+            # Penaliza variância pesadamente para buscar a curva de "45 graus"
+            sas_score = (avg_sharpe / (1.0 + std_sharpe)) * (1.0 - worst_dd) * min(avg_pf, 2.0)
+            
+            logger.info(f"📊 {sym} ({tf}): SAS={sas_score:.2f} (AvgS={avg_sharpe:.2f}, StdS={std_sharpe:.2f}, MaxDD={worst_dd:.2f}, AvgPF={avg_pf:.2f})")
 
-        if not wins:
-            return {"symbol": sym, "error": "wfo_no_windows"}
+            if sas_score > best_tf_score:
+                best_tf_score = sas_score
+                best_tf_results = tf_wins
+                best_tf_name = tf
 
-        best_win = max(wins, key=lambda w: w["test_metrics"].get("calmar", -100))
-        cand_params = best_win["best_params"]
-        cand_metrics = best_win["test_metrics"]
-        try:
-            elite_json_latest = os.path.join(
-                OPT_OUTPUT_DIR, "elite_symbols_latest.json"
-            )
-            baseline_params = None
-            if os.path.exists(elite_json_latest):
-                import json
+        except Exception as e:
+            logger.error(f"❌ Erro crítico ao testar timeframe {tf} para {sym}: {e}")
 
-                with open(elite_json_latest, "r", encoding="utf-8") as f:
-                    payload = json.load(f)
-                elite_dict = (payload or {}).get("elite_symbols", {})
-                b = elite_dict.get(sym)
-                if isinstance(b, dict):
-                    baseline_params = {
-                        "ema_short": int(b.get("ema_short", 9)),
-                        "ema_long": int(b.get("ema_long", 21)),
-                        "rsi_low": int(b.get("rsi_low", 30)),
-                        "rsi_high": int(b.get("rsi_high", 70)),
-                        "adx_threshold": float(b.get("adx_threshold", 25)),
-                        "mom_min": float(b.get("mom_min", 0.0) or 0.0),
-                        "sl_atr_multiplier": float(
-                            b.get("sl_atr_multiplier", 2.5) or 2.5
-                        ),
-                        "tp_mult": float(b.get("tp_mult", 5.0) or 5.0),
-                    }
-            if baseline_params is None:
-                elite = getattr(config, "ELITE_SYMBOLS", {}) if config else {}
-                ep = elite.get(sym) if isinstance(elite, dict) else None
-                if isinstance(ep, dict):
-                    baseline_params = {
-                        "ema_short": int(ep.get("ema_short", 9)),
-                        "ema_long": int(ep.get("ema_long", 21)),
-                        "rsi_low": int(ep.get("rsi_low", 30)),
-                        "rsi_high": int(ep.get("rsi_high", 70)),
-                        "adx_threshold": float(ep.get("adx_threshold", 25)),
-                        "mom_min": float(ep.get("mom_min", 0.0) or 0.0),
-                        "sl_atr_multiplier": float(
-                            ep.get("sl_atr_multiplier", 2.5) or 2.5
-                        ),
-                        "tp_mult": float(ep.get("tp_mult", 5.0) or 5.0),
-                    }
-            if baseline_params:
-                ema_changed = (
-                    int(cand_params.get("ema_short", 9))
-                    != int(baseline_params.get("ema_short", 9))
-                ) or (
-                    int(cand_params.get("ema_long", 21))
-                    != int(baseline_params.get("ema_long", 21))
-                )
-                if ema_changed:
-                    base_metrics = backtest_params_on_df(
-                        sym, baseline_params, df_test, ml_model=best_win.get("ml_model")
-                    )
-                    base_wr = float(base_metrics.get("win_rate", 0.0) or 0.0)
-                    new_wr = float(cand_metrics.get("win_rate", 0.0) or 0.0)
-                    denom = base_wr if base_wr > 1e-9 else 1e-9
-                    improvement = (new_wr - base_wr) / denom
-                    if improvement < 0.15:
-                        cand_params["ema_short"] = int(
-                            baseline_params.get(
-                                "ema_short", cand_params.get("ema_short", 9)
-                            )
-                        )
-                        cand_params["ema_long"] = int(
-                            baseline_params.get(
-                                "ema_long", cand_params.get("ema_long", 21)
-                            )
-                        )
-                        cand_metrics = backtest_params_on_df(
-                            sym, cand_params, df_test, ml_model=best_win.get("ml_model")
-                        )
-        except Exception:
-            pass
-        out["selected_params"] = cand_params
-        out["test_metrics"] = cand_metrics
-        out["equity_curve"] = best_win["equity_curve"]
-        logger.info(
-            f"📊 {sym} | "
-            f"🛠️ Calmar OOS={best_win['test_metrics'].get('calmar', 0):.3f} | "
-            f"📈 Retorno={best_win['test_metrics'].get('total_return', 0):.2%} | "
-            f"🔢 Trades={best_win['test_metrics'].get('total_trades', 0)} | "
-            f"🛡️ Max DD={best_win['test_metrics'].get('max_drawdown', 0):.2%}"
-        )
+    if not best_tf_results:
+        return {"symbol": sym, "status": "error", "error": "no_valid_timeframes"}
 
-        return out
+    logger.info(f"🏆 {sym}: Melhor timeframe selecionado: {best_tf_name} (Score: {best_tf_score:.2f})")
+    
+    best_overall_win = max(best_tf_results, key=lambda w: w["test_metrics"].get("calmar", -100))
+    
+    best_params = best_overall_win["best_params"].copy()
+    best_params["timeframe"] = best_tf_name
 
-    except Exception as e:
-        logger.exception(f"WFO falhou para {sym}")
-        return {"symbol": sym, "error": str(e)}
+    out = {
+        "symbol": sym,
+        "status": "ok",
+        "timeframe": best_tf_name,
+        "selected_params": best_params,
+        "test_metrics": best_overall_win["test_metrics"],
+        "monte_carlo": run_monte_carlo_stress(best_overall_win["equity_curve"]),
+        "equity_curve": best_overall_win["equity_curve"],
+        "wfo_windows": best_tf_results
+    }
+    
+    return out
+
 
 
 # ===========================
@@ -2854,8 +2685,7 @@ def run_optimizer():
     clusters_to_save = {}
     if clusterer:
         for sym, m in valid_symbols_info.items():
-            feat = [m.get("avg_fin", 0), m.get("volatility", 0.02)]
-            clusters_to_save[sym] = int(clusterer.predict(feat))
+            clusters_to_save[sym] = clusterer.get_basket(sym)
     else:
         clusters_to_save = {sym: 1 for sym in valid_symbols}
 
@@ -2865,8 +2695,7 @@ def run_optimizer():
     cluster_map = {}
     if clusterer:
         for sym, m in valid_symbols_info.items():
-            feat = [m.get("avg_fin", 0), m.get("volatility", 0.02)]
-            cluster_map[sym] = int(clusterer.predict(feat))
+            cluster_map[sym] = clusterer.get_basket(sym)
     else:
         for sym in valid_symbols:
             cluster_map[sym] = 1 # Mid-Liquidity fallback
@@ -2939,7 +2768,9 @@ def run_optimizer():
             blue_list.append(opt_map[bs])
         else:
             try:
-                dfv = load_data_polygon(bs, 3000, "M15")
+                b_id = cluster_map.get(bs, 0)
+                tf_fallback = "M5" if b_id == 0 else "M15"
+                dfv = load_data_with_retry(bs, 3000, timeframe=tf_fallback)
                 params = _ensure_non_generic(bs, {})
                 m = (
                     backtest_params_on_df(bs, params, dfv)
@@ -3041,8 +2872,9 @@ def run_optimizer():
         sample_syms = list(final_elite.keys())[: min(5, len(final_elite))]
         sanity_results = []
         for sym in sample_syms:
+            tf_sanity = final_elite[sym].get("timeframe", "M15")
             df_recent = load_data_with_retry(
-                sym, config_bt["TEST_PERIOD"], timeframe="M15"
+                sym, config_bt["TEST_PERIOD"], timeframe=tf_sanity
             )
             if df_recent is None or len(df_recent) < 100:
                 print(f" [WARN] {sym}: dados insuficientes para sanity")
@@ -3111,6 +2943,7 @@ def run_optimizer():
 
             f.write(f' "{sym}": {{\n')
             f.write(f'  "category": "{category}",\n')
+            f.write(f'  "timeframe": "{res.get("timeframe", "M15")}",\n')
             f.write(f'  "weight": {weight:.2f}, # {weight*100:.1f}%\n')
             f.write(f'  "ema_short": {p.get("ema_short", 9)},\n')
             f.write(f'  "ema_long": {p.get("ema_long", 21)},\n')
@@ -3134,8 +2967,6 @@ def run_optimizer():
 
     print(f"\n💾 Portfolio salvo em: {elite_file}")
 
-    import json
-
     elite_payload = {
         "generated_at": datetime.now().isoformat(),
         "elite_symbols": {},
@@ -3147,6 +2978,7 @@ def run_optimizer():
         category = "BLUE CHIP" if sym in blue_chips_syms else "OPORTUNIDADE"
         elite_payload["elite_symbols"][sym] = {
             "category": category,
+            "timeframe": res.get("timeframe", "M15"),
             "weight": round(weight, 4),
             "ema_short": int(p.get("ema_short", 9)),
             "ema_long": int(p.get("ema_long", 21)),
@@ -3259,7 +3091,7 @@ def run_optimizer():
     # Validação final (code_execution simulado): backtest 3 ativos com dados recentes
     try:
         for sym in ["PETR4", "VALE3", "ITUB4"]:
-            dfv = load_data_polygon(sym, 2000, "M15")
+            dfv = load_data_with_retry(sym, 2000, timeframe="M15")
             if dfv is None or dfv.empty:
                 continue
             dfv = dfv[dfv.index >= pd.Timestamp("2025-01-01")]
@@ -3353,7 +3185,7 @@ def run_optimizer():
                     or int(res.get("test_metrics", {}).get("total_trades", 0)) <= 3
                 ):
                     try:
-                        dfv = load_data_polygon(sym, 10000, "M15")
+                        dfv = load_data_with_retry(sym, 10000, timeframe="M15")
                         params = _ensure_non_generic(
                             sym, res.get("selected_params", {}) if res else {}
                         )

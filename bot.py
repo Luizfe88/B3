@@ -221,11 +221,15 @@ def main():
                         symbols_to_remove.append(symbol)
                         continue
 
-                    # 1.1 Candles (últimos 100 M15) - Cache do terminal geralmente rápido
-                    candles = utils.safe_copy_rates(symbol, mt5.TIMEFRAME_M15, 100)
+                    # 1.1 Candles (utiliza timeframe calibrado ou M15) - Cache do terminal geralmente rápido
+                    params = calibration_manager.get_calibrated_params(symbol)
+                    sym_tf_str = params.get("timeframe", "M15")
+                    sym_tf = utils.str_to_tf(sym_tf_str)
+                    
+                    candles = utils.safe_copy_rates(symbol, sym_tf, 100)
                     if candles is None or candles.empty:
                         logger.warning(
-                            f"⚠️ Dados insuficientes (candles) para {symbol}. Pulando."
+                            f"⚠️ Dados insuficientes (candles {sym_tf_str}) para {symbol}. Pulando."
                         )
                         continue
 

@@ -178,6 +178,14 @@ class CalibrationManager:
                 if k != "kelly":
                     self.calibrations["symbols"][symbol][k] = v
             
+            # ✅ NOVO: Salva o timeframe selecionado e veredito
+            if "timeframe" in result:
+                self.calibrations["symbols"][symbol]["timeframe"] = result["timeframe"]
+            
+            if "verdict" in result:
+                self.calibrations["symbols"][symbol]["verdict"] = result["verdict"]
+                self.calibrations["symbols"][symbol]["last_calib_date"] = datetime.now().strftime("%Y-%m-%d")
+            
             # Agenda atualização do Kelly para este símbolo
             self.update_symbol_kelly(symbol)
             

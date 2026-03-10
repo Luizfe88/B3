@@ -50,11 +50,9 @@ class TickerClusterer:
         sorted_indices = np.argsort(adv_centers)[::-1] # Decrescente
         
         # Mapeamento do KMeans label para nossa Cesta A, B, C
-        label_to_basket = {
-            sorted_indices[0]: 0, # Alta (A) -> No código usaremos 0, 1, 2 internamente
-            sorted_indices[1]: 1, # Média (B)
-            sorted_indices[2]: 2  # Baixa (C)
-        }
+        label_to_basket = {}
+        for i, idx in enumerate(sorted_indices):
+            label_to_basket[idx] = i
         
         self.basket_id_map = label_to_basket
         self.basket_labels = {
@@ -76,6 +74,10 @@ class TickerClusterer:
     def get_basket(self, symbol: str) -> int:
         """Retorna o ID da cesta (0=A, 1=B, 2=C). Fallback para 1 (B)"""
         return self.cluster_map.get(symbol, 1)
+
+    def predict(self, symbol: str) -> int:
+        """Alias para get_basket para compatibilidade com interfaces de ML"""
+        return self.get_basket(symbol)
 
     def get_label(self, symbol: str) -> str:
         """Retorna o nome da cesta"""

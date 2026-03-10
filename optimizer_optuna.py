@@ -102,6 +102,8 @@ def fast_backtest_core(
     trades = 0
     wins = 0
     losses = 0
+    total_gross_profit = 0.0
+    total_gross_loss = 0.0
     buy_signals_count = 0
     sell_signals_count = 0
 
@@ -280,6 +282,12 @@ def fast_backtest_core(
                             else:
                                 cash -= val_exit + cost  # Comprou, pagou caixa
 
+                        # Update Gross Profit/Loss
+                        if gross > 0:
+                            total_gross_profit += gross
+                        else:
+                            total_gross_loss += abs(gross)
+
                         if position > 0:
                             position -= qty_close
                         else:
@@ -345,6 +353,12 @@ def fast_backtest_core(
                         net_profit = gross_profit - c_exit
                         cash -= val_exit + c_exit
                         equity = cash
+
+                # Accumulate Gross Profit/Loss (for trade-based PF)
+                if gross_profit > 0:
+                    total_gross_profit += gross_profit
+                else:
+                    total_gross_loss += abs(gross_profit)
 
                 if net_profit > 0:
                     wins += 1
@@ -595,6 +609,8 @@ def fast_backtest_core(
         trades,
         wins,
         losses,
+        total_gross_profit,
+        total_gross_loss,
         buy_signals_count + sell_signals_count,
         counts,
     )
@@ -679,9 +695,12 @@ def compute_metrics(equity_curve):
     gross_losses = np.sum(np.abs(returns[losses_mask]))
     profit_factor = gross_profits / gross_losses if gross_losses > 0 else 2.0
 
+    # ✅ RECTIFY SHARPE PARADOX: If PF < 1 or Return < 0, Sharpe must be <= 0
     sharpe = (
         (np.mean(returns) - (risk_free / (252 * 28))) / std_returns * np.sqrt(252 * 28)
     )
+    if profit_factor < 1.0 or total_return < 0:
+        sharpe = min(sharpe, 0.0)
 
     down_rets = returns[returns < 0]
     down_std = np.std(down_rets) if len(down_rets) > 0 else 0.0
@@ -896,9 +915,28 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
 
     volume_ma = pd.Series(volume).rolling(20).mean().fillna(0).values
 
-    # ✅ ML Probs Logic
-    # FORÇAR ML SEMPRE OK PARA DIAGNÓSTICO
-    ml_probs = np.ones(len(close)) * 0.85
+    # ✅ ML Probs Logic: Use real model or neutral fallback
+    if ml_model is not None:
+        try:
+            # Extract features for prediction
+            features_df = extract_features_for_ml(df, symbol)
+            # Ensure model has predict_proba
+            if hasattr(ml_model, "predict_proba"):
+                probs = ml_model.predict_proba(features_df)
+                # handle if it returns (prob0, prob1) or just prob1
+                if isinstance(probs, tuple):
+                    ml_probs = probs[1]
+                elif probs.ndim > 1:
+                    ml_probs = probs[:, 1]
+                else:
+                    ml_probs = probs
+            else:
+                ml_probs = np.ones(len(close)) * 0.50
+        except Exception as e:
+            logger.error(f"Error predicting ML probs: {e}")
+            ml_probs = np.ones(len(close)) * 0.50
+    else:
+        ml_probs = np.ones(len(close)) * 0.50
 
     # Check de Tendência: ema_s > ema_l em pelo menos 30% das barras
     trend_freq = np.sum(ema_s > ema_l) / len(close)
@@ -922,7 +960,7 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
         from otimizador_semanal import get_ibov_data
 
         ibov = get_ibov_data()
-        ibov = ibov.reindex(df.index).fillna(method="ffill").fillna(method="bfill")
+        ibov = ibov.reindex(df.index).ffill().bfill()
         asset_ret = pd.Series(close, index=df.index).pct_change().fillna(0)
         ibov_ret = ibov["close"].pct_change().fillna(0)
         cov = float(np.cov(asset_ret.values[-500:], ibov_ret.values[-500:])[0, 1])
@@ -932,7 +970,7 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
         beta_est = 1.0
 
     # Chamada com retorno de contadores
-    equity_arr, trades, wins, losses, sigs, counts = fast_backtest_core(
+    equity_arr, trades, wins, losses, total_gross_profit, total_gross_loss, sigs, counts = fast_backtest_core(
         close,
         open_,
         high,
@@ -968,6 +1006,16 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
         params.get("trailing_config", None),  # Passa config se existir
     )
 
+    # Calculate Trade-based Profit Factor
+    # gross_loss is already absolute
+    trade_pf = (
+        total_gross_profit / total_gross_loss if total_gross_loss > 0 else 2.0
+    )
+    if total_gross_profit == 0 and total_gross_loss > 0:
+        trade_pf = 0.0
+    elif total_gross_profit == 0 and total_gross_loss == 0:
+        trade_pf = 0.0
+
     # PRINT DIAGNOSTIC FUNNEL
     total_setups = counts[1]  # c_setup
     if total_setups > 0:
@@ -987,6 +1035,7 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
             "wins": wins,
             "losses": losses,
             "win_rate": wins / trades if trades > 0 else 0.0,
+            "profit_factor": float(trade_pf),
             "equity_curve": equity_arr.tolist(),
         }
     )
@@ -1267,6 +1316,7 @@ def optimize_with_optuna(
             "reason": f"all_trials_pruned_or_failed | pruned={pruned} failed={failed} total={len(study.trials)}",
         }
 
+    verdict = "UNKNOWN"
     try:
         _best_params = dict(study.best_params)
         _best_metrics = backtest_params_on_df(
@@ -1278,14 +1328,16 @@ def optimize_with_optuna(
         if "n_trades" not in _best_metrics:
             _best_metrics["n_trades"] = int(_best_metrics.get("total_trades", 0) or 0)
         _best_metrics["symbol"] = symbol
-        diagnostico_final(_best_metrics, _best_params)
+        verdict = diagnostico_final(_best_metrics, _best_params)
     except Exception:
         pass
+
     return {
         "best_params": study.best_params,
         "best_score": study.best_value,
         "ml_model": ml_model,
         "status": "SUCCESS",
+        "verdict": verdict,
     }
 
 
@@ -1307,6 +1359,16 @@ def diagnostico_final(metrics, params):
     print(base)
     lines.append(base)
 
+    # ✅ TRAVA SOBERANA: Reprovação imediata se PF < 1.0 ou trades insuficientes
+    if pf < 1.0 or trades < 3:
+        msg = [
+            "❌ VEREDITO: REPROVADO",
+            "   Motivo: Fator de lucro negativo ou amostragem insuficiente."
+        ]
+        for m in msg:
+            print(m)
+            lines.append(m)
+        return
     # --- CENÁRIO 1: O ROBÔ ESCOLHEU MODO SNIPER (25.0) ---
     if adx == 25.0 or adx >= 20.0:
         if sharpe > 1.0 and pf > 2.0:
@@ -1408,3 +1470,11 @@ def diagnostico_final(metrics, params):
             fd.write("\n".join(lines) + "\n")
     except Exception:
         pass
+
+    # ✅ Retorna o veredito para persistência
+    full_text = "\n".join(lines)
+    if "SNIPER DE ELITE" in full_text: return "SNIPER_ELITE"
+    if "TREND HUNTER" in full_text: return "TREND_HUNTER"
+    if "INTERMEDIÁRIO DE ALTA QUALIDADE" in full_text: return "INTERMEDIATE_HIGH"
+    if "REPROVADO" in full_text: return "REJECTED"
+    return "UNKNOWN"

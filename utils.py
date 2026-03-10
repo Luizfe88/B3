@@ -230,6 +230,21 @@ TIMEFRAME_MACRO = getattr(mt5, f"TIMEFRAME_{config.MACRO_TIMEFRAME}", mt5.TIMEFR
 logger = logging.getLogger("utils")
 
 
+def str_to_tf(tf_str: str):
+    """Converte string ('M5', 'M15', 'M30') para constante MT5"""
+    if mt5 is None:
+        return 0
+    mapping = {
+        "M1": mt5.TIMEFRAME_M1,
+        "M5": mt5.TIMEFRAME_M5,
+        "M15": mt5.TIMEFRAME_M15,
+        "M30": mt5.TIMEFRAME_M30,
+        "H1": mt5.TIMEFRAME_H1,
+        "D1": mt5.TIMEFRAME_D1,
+    }
+    return mapping.get(str(tf_str).upper(), mt5.TIMEFRAME_M15)
+
+
 def atomic_save_json(path: str, data: dict) -> bool:
     try:
         p = Path(path)
