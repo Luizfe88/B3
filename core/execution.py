@@ -237,7 +237,7 @@ class ExecutionEngine:
                 logger.error(f"❌ Falha ao fechar {ticket}: {result.comment}")
                 return False
                 
-            logger.info(f"✅ Posição {ticket} fechada com sucesso")
+            logger.info(f"✅ Posição {ticket} fechada com sucesso ({request.get('comment', 'Agent Close')})")
             return True
 
     def modify_sl(self, ticket: int, new_sl: float) -> bool:

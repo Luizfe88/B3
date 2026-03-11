@@ -297,12 +297,14 @@ def main():
                     # 2. Decisão do Fund Manager (Agentes)
                     decision = fund_manager.decide(symbol, market_data)
 
-                    # Se aprovado, armazena para a Fase 2 (Ranking Global)
-                    if decision["action"] in ["BUY", "SELL"]:
-                        # Para compatibilidade do código legado (se invertendo mão etc), 
-                        # podemos salvar o symbol_data local caso usemos.
+                    # Se aprovado ou apenas bloqueado pelo almoço (para ranking), armazena
+                    if decision["action"] in ["BUY", "SELL"] or decision.get("lunch_filter"):
                         opportunities.append((symbol, decision))
-                        logger.info(f"🔎 [SCAN] {symbol} marcou possível {decision['action']}. Aguardando Ranking...")
+                        
+                        if decision.get("lunch_filter"):
+                            logger.info(f"🥪 [SCAN] {symbol} Bloqueado pelo almoço, mas incluído no Ranking Parcial.")
+                        else:
+                            logger.info(f"🔎 [SCAN] {symbol} marcou possível {decision['action']}. Aguardando Ranking...")
                 
                 except Exception as e:
                     logger.error(f"❌ Erro ao analisar {symbol}: {e}")
@@ -584,6 +586,9 @@ def main():
 
                         # Incrementa contador do setor após execução bem-sucedida
                         current_sector_counts[symbol_sector] = current_sector_counts.get(symbol_sector, 0) + 1
+
+            else:
+                logger.info("📭 Nenhum sinal relevante detectado neste ciclo de scan.")
 
             # Gerenciamento de posições abertas
             position_manager.update_stops()

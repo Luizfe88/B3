@@ -176,8 +176,53 @@ class PositionManager:
                 except Exception as ts_err:
                     logger.debug(f"⚠️ Trailing stop erro em {p.get('symbol','?')}: {ts_err}")
 
+            # 🚀 NOVO: Monitoramento de SL/TP Virtual (Código local que fecha a ordem se o preço bater)
+            self.monitor_virtual_stops(positions)
+
         except Exception as ts_outer_err:
             logger.error(f"❌ Erro no loop de trailing stop: {ts_outer_err}")
+
+    def monitor_virtual_stops(self, positions: List[Dict[str, Any]]):
+        """
+        Monitoramento local (Virtual) de Stop Loss e Take Profit.
+        Se o preço atual do MT5 cruzar os limites salvos na posição, o bot fecha a ordem via mercado.
+        Isso garante que mesmo que os stops não apareçam no MT5 (visuais), o robô os execute.
+        """
+        for p in positions:
+            symbol = p.get("symbol")
+            ticket = p.get("ticket")
+            p_type = p.get("type")
+            sl = p.get("sl", 0.0)
+            tp = p.get("tp", 0.0)
+            cur_price = p.get("current_price", 0.0)
+
+            if not ticket or not symbol or cur_price <= 0:
+                continue
+
+            # Verificação de SL
+            triggered_sl = False
+            if sl > 0:
+                if p_type == "BUY" and cur_price <= sl:
+                    triggered_sl = True
+                elif p_type == "SELL" and cur_price >= sl:
+                    triggered_sl = True
+
+            # Verificação de TP
+            triggered_tp = False
+            if tp > 0:
+                if p_type == "BUY" and cur_price >= tp:
+                    triggered_tp = True
+                elif p_type == "SELL" and cur_price <= tp:
+                    triggered_tp = True
+
+            if triggered_sl or triggered_tp:
+                reason = "VIRTUAL_SL" if triggered_sl else "VIRTUAL_TP"
+                logger.info(f"🚨 [VIRTUAL STOP] {symbol} (Ticket: {ticket}) atingiu {reason} @ {cur_price}. Fechando posição...")
+                success = self.execution.close_position(ticket, symbol)
+                if success:
+                    logger.info(f"✅ [VIRTUAL STOP] {symbol} fechado com sucesso via {reason}.")
+                else:
+                    logger.error(f"❌ [VIRTUAL STOP] Falha ao fechar {symbol} via {reason}.")
 
     def check_risk_limits(self) -> bool:
         """

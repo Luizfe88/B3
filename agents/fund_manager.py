@@ -118,8 +118,10 @@ class FundManager:
                          "symbol": symbol,
                          "action": "HOLD",
                          "reason": "Lunch Break Filter (Not Golden Opportunity)",
+                         "lunch_filter": True, # Sinaliza para o ranker que é uma oportunidade válida mas bloqueada pelo horário
                          "size": 0.0,
-                         "debate": debate_result
+                         "debate": debate_result,
+                         "reports": reports
                      }
                  else:
                       logger.info(f"💎 [FundManager] Oportunidade de OURO no almoço! (Conf: {confidence:.2f} | {consensus})")

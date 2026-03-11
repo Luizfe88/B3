@@ -423,6 +423,50 @@ class MLSignalPredictor:
         features_scaled = self.scaler.transform(features.reshape(1, -1))
         return features_scaled.flatten()
 
+    def check_timeframe_alignment(self, symbol: str) -> Dict[str, Any]:
+        """
+        🚀 NOVO: Verifica se a tendência está alinhada nos timeframes M5, M15 e M30.
+        Retorna a direção dominante e se há alinhamento perfeito.
+        """
+        import utils
+        import MetaTrader5 as mt5
+
+        alignment = {}
+        timeframes = {
+            "M5": mt5.TIMEFRAME_M5,
+            "M15": mt5.TIMEFRAME_M15,
+            "M30": mt5.TIMEFRAME_M30
+        }
+
+        trends = {}
+        for label, tf in timeframes.items():
+            df = utils.safe_copy_rates(symbol, tf, 50)
+            if df is None or len(df) < 20:
+                trends[label] = "NEUTRAL"
+                continue
+            
+            # EMA 9 vs 21 como proxy de tendência rápida
+            ema9 = df['close'].ewm(span=9, adjust=False).mean().iloc[-1]
+            ema21 = df['close'].ewm(span=21, adjust=False).mean().iloc[-1]
+            
+            if ema9 > ema21 * 1.001:
+                trends[label] = "BULL"
+            elif ema9 < ema21 * 0.999:
+                trends[label] = "BEAR"
+            else:
+                trends[label] = "NEUTRAL"
+        
+        # Alinhamento Perfeito: Todos na mesma direção (sem ser NEUTRAL)
+        vals = list(trends.values())
+        is_aligned = len(set(vals)) == 1 and vals[0] != "NEUTRAL"
+        dominant = vals[1] # M15 as base
+
+        return {
+            "is_aligned": is_aligned,
+            "trends": trends,
+            "dominant": dominant
+        }
+
     def get_dynamic_threshold(self, symbol: str) -> float:
         """
         Calcula threshold dinâmico baseado em VIX e streak de perdas.
@@ -524,6 +568,22 @@ class MLSignalPredictor:
 
         # 5. Filtro de Regime de Mercado (Market Breath)
         regime = check_market_regime()
+        
+        # 5.1 Alinhamento de Timeframes (M5, M15, M30) - Filtro de Confluência
+        alignment_data = self.check_timeframe_alignment(symbol)
+        if label != "HOLD":
+            if label == "BUY" and alignment_data["dominant"] != "BULL":
+                 label = "HOLD"
+                 veto_reason = "TimeframeMismatch: M15 not BULL"
+            elif label == "SELL" and alignment_data["dominant"] != "BEAR":
+                 label = "HOLD"
+                 veto_reason = "TimeframeMismatch: M15 not BEAR"
+            
+            # Se não houver alinhamento perfeito, aumentamos o threshold de exigência
+            if not alignment_data["is_aligned"]:
+                self.base_threshold += 0.05
+                logger.info(f"⚠️ [{symbol}] Sem alinhamento perfeito M5/M15/M30. Threshold elevado para {self.base_threshold:.2f}")
+
         threshold = self.base_threshold
         if regime.get("safety_mode", False):
             threshold = 0.88
@@ -573,6 +633,7 @@ class MLSignalPredictor:
                 "lstm": int(np.argmax(lstm_probs)),
             },
             "veto_reason": veto_reason,
+            "timeframe_alignment": alignment_data,
             "is_future": __import__("utils").is_future(symbol),
         }
 
