@@ -155,6 +155,9 @@ ANTI_CHOP = {
     "max_symbols_blocked": 5,
 }
 
+# Símbolos Proibidos (Proibidos em qualquer otimizador ou sistema)
+FORBIDDEN_SYMBOLS = {'WIN$N', 'IND$N', 'WSP$N', 'WDO$N', 'DOL$N', 'CCM$N', 'BGI$N', 'ICF$N', 'BIT$N', 'DI1$N'}
+
 # Configurações de Time Score (regras por período do dia)
 TIME_SCORE_RULES = {
     "OPEN": {"start": "10:00", "end": "11:30", "adx_min": 25},
@@ -481,9 +484,6 @@ SECTOR_MAP = {
     "MLAS3": "TECNOLOGIA",
     "NGRD3": "TECNOLOGIA",
     "PDGR3": "TECNOLOGIA",
-    # ==========================================
-    # 📚 EDUCAÇÃO
-    # ==========================================
     "YDUQ3": "EDUCACAO",
     "COGN3": "EDUCACAO",
     "ANIM3": "EDUCACAO",
@@ -491,6 +491,9 @@ SECTOR_MAP = {
     "CSED3": "EDUCACAO",
     "BAHI3": "EDUCACAO",
 }
+
+# ✅ FILTRO DE SEGURANÇA: Remove símbolos proibidos de qualquer processamento
+SECTOR_MAP = {k: v for k, v in SECTOR_MAP.items() if k not in FORBIDDEN_SYMBOLS}
 
 # Intervalo de atualização da correlação (segundos)
 CORR_UPDATE_INTERVAL = 3600  # 1 hora

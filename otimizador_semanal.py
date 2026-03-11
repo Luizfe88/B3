@@ -3227,6 +3227,21 @@ def run_optimizer():
         try:
             logger.info("💾 Consolidando resultados em calibrations.json...")
             calibration_manager.update_from_results(all_results)
+            
+            # ✅ EXPORTAÇÃO INDIVIDUAL: Salva um JSON para cada ativo calibrado
+            ind_dir = "calibrations_individual"
+            os.makedirs(ind_dir, exist_ok=True)
+            for sym, res in all_results.items():
+                params = res.get("selected_params") or res.get("best_params")
+                if params:
+                    # Inclui o timeframe e veredito se disponíveis
+                    params_to_save = params.copy()
+                    if "timeframe" in res: params_to_save["timeframe"] = res["timeframe"]
+                    if "verdict" in res: params_to_save["verdict"] = res["verdict"]
+                    
+                    with open(os.path.join(ind_dir, f"{sym}.json"), "w", encoding="utf-8") as f:
+                        json.dump(params_to_save, f, indent=4)
+            logger.info(f"📂 {len(all_results)} arquivos individuais salvos em '{ind_dir}/'")
         except Exception as e:
             logger.error(f"❌ Erro ao salvar calibrations.json: {e}")
 

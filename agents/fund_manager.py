@@ -5,6 +5,8 @@ from .analyst_team import AnalystTeam
 from .researcher_team import ResearcherTeam
 from .trader_agents import TraderTeam
 from .risk_team import RiskTeam
+import utils
+
 
 logger = logging.getLogger("FundManager")
 

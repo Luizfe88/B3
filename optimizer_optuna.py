@@ -1368,7 +1368,7 @@ def diagnostico_final(metrics, params):
         for m in msg:
             print(m)
             lines.append(m)
-        return
+        return "REJECTED"
     # --- CENÁRIO 1: O ROBÔ ESCOLHEU MODO SNIPER (25.0) ---
     if adx == 25.0 or adx >= 20.0:
         if sharpe > 1.0 and pf > 2.0:

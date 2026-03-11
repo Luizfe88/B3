@@ -71,10 +71,13 @@ class AdaptiveIntelligence:
         self.adjustment_thread = None
         self.running = False
         
+        self.last_adjustment = None
         if self.parameter_history:
             self.last_adjustment = self.parameter_history[-1].get("timestamp")
-        else:
-            self.last_adjustment = None
+        
+        if not isinstance(self.last_adjustment, datetime):
+            self.last_adjustment = datetime.now()
+
             
         self.performance_window = deque(maxlen=48)  # Últimas 48 horas
 
@@ -166,6 +169,9 @@ class AdaptiveIntelligence:
                     self.metrics_history.append(metrics)
 
                     # Analisa e ajusta a cada hora
+                    if self.last_adjustment is None or not isinstance(self.last_adjustment, datetime):
+                        self.last_adjustment = datetime.now()
+
                     if (datetime.now() - self.last_adjustment).total_seconds() >= 3600:
                         self._analyze_and_adjust()
                         self.last_adjustment = datetime.now()
