@@ -53,6 +53,8 @@ risk_limits:
 # -- FILTROS DE ENTRADA --
 # Regra #1: Apenas os filtros essenciais e rápidos
 entry_filters:
+  # Threshold de convicção mínima para sinal (0-100)
+  CONVICTION_THRESHOLD: 60
   # Filtro de Spread: Rejeita se o spread atual for X vezes maior que a média de N candles
   spread_filter:
     max_spread_multiplier: 2.5

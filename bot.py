@@ -403,6 +403,19 @@ def main():
                         base_allocation_pct = config.MAX_CAPITAL_ALLOCATION_PCT
                         size_multiplier = decision.get("size", 0.0)
 
+                        # --- SIZING DINÂMICO POR FAIXA DE CONVICÇÃO ---
+                        conviction_pct = decision.get("conviction", 0.0) * 100
+                        if conviction_pct < 60:
+                            dynamic_multiplier = 0.0
+                        elif conviction_pct < 70:
+                            dynamic_multiplier = 0.25
+                        elif conviction_pct < 85:
+                            dynamic_multiplier = 0.50
+                        else:
+                            dynamic_multiplier = 1.0
+                            
+                        size_multiplier *= dynamic_multiplier
+
                         target_exposure = equity * base_allocation_pct * size_multiplier
 
                         # Correção: Garante lote mínimo de 100 se exposição > 0
@@ -516,6 +529,19 @@ def main():
                         # Cálculo de Lote (Mesma lógica)
                         base_allocation_pct = config.MAX_CAPITAL_ALLOCATION_PCT
                         size_multiplier = decision.get("size", 0.0)
+                        
+                        # --- SIZING DINÂMICO POR FAIXA DE CONVICÇÃO ---
+                        conviction_pct = decision.get("conviction", 0.0) * 100
+                        if conviction_pct < 60:
+                            dynamic_multiplier = 0.0
+                        elif conviction_pct < 70:
+                            dynamic_multiplier = 0.25
+                        elif conviction_pct < 85:
+                            dynamic_multiplier = 0.50
+                        else:
+                            dynamic_multiplier = 1.0
+                            
+                        size_multiplier *= dynamic_multiplier
 
                         target_exposure = equity * base_allocation_pct * size_multiplier
 

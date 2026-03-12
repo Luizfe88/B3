@@ -10,6 +10,7 @@ baseado em um Score de Convicção unificado, pesando:
 
 import logging
 from typing import List, Dict, Tuple
+import config
 
 logger = logging.getLogger("opportunity_ranker")
 
@@ -109,6 +110,15 @@ class OpportunityRanker:
                 (scores['flow'] * self.weights['flow']) +
                 (scores['sentiment'] * self.weights['sentiment'])
             )
+            
+            # Incorpora a convicção à decisão para uso posterior (ex: Sizing Dinâmico)
+            decision['conviction'] = final_conviction
+
+            # --- SOBERANO: Ignora se Convicção < Threshold Configurado ---
+            conv_threshold = getattr(config, "CONVICTION_THRESHOLD", 60) / 100.0
+            if final_conviction < conv_threshold:
+                logger.warning(f"⚠️ [{symbol}] Descartado: Convicção ({final_conviction*100:.1f}%) abaixo do limiar ({conv_threshold*100:.1f}%).")
+                continue
             
             ranked_list.append({
                 'symbol': symbol,

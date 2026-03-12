@@ -62,6 +62,7 @@ MAX_SYMBOLS = config["risk_limits"][
 MAX_PER_SECTOR = 2  # Máximo de 2 posições por setor
 
 # Entry Filters
+CONVICTION_THRESHOLD = config["entry_filters"].get("CONVICTION_THRESHOLD", 60)
 SPREAD_MAX_MULTIPLIER = config["entry_filters"]["spread_filter"][
     "max_spread_multiplier"
 ]
