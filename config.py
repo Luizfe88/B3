@@ -44,6 +44,13 @@ WFA_ENABLED = True
 COMPLEXITY_PENALTY_LAMBDA = 0.01  # Penalty for models with too many parameters
 # ----------------------------------
 
+# Risk BRL & Profit Protection Limits (B3 Reality Check)
+MAX_LOSS_BRL = config.get("risk_limits", {}).get("max_loss_brl", -300.00)
+BREAK_EVEN_TRIGGER_BRL = config.get("risk_limits", {}).get("break_even_trigger_brl", 150.00)
+PROFIT_ACTIVATION_THRESHOLD_BRL = config.get("risk_limits", {}).get("profit_activation_threshold_brl", 250.00)
+PROFIT_TRAILING_PERCENT = config.get("risk_limits", {}).get("profit_trailing_percent", 0.25)
+SLIPPAGE_BRL = config.get("backtest_costs", {}).get("slippage_brl", 0.02)
+
 # Risk Limits
 MAX_DAILY_LOSS_MONEY = config["risk_limits"]["max_daily_loss_money"]
 MAX_CONCURRENT_POSITIONS = config["risk_limits"]["max_concurrent_positions"]

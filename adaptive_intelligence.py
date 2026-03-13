@@ -143,6 +143,10 @@ class AdaptiveIntelligence:
             if initial_metrics:
                 self.metrics_history.append(initial_metrics)
                 logger.info("🧠 Adaptive Intelligence - Seed inicial coletado.")
+            
+            # 🔥 NOVO: Warmup do histórico para não começar "cego"
+            self._warmup_from_history()
+            
         except Exception as e:
             logger.error(f"⚠️ Erro ao pré-carregar dados iniciais do Adaptive: {e}")
 
@@ -180,6 +184,78 @@ class AdaptiveIntelligence:
                 logger.error(f"Erro no loop de monitoramento: {e}")
 
             time.sleep(900)  # Espera 15 minutos
+
+    def _warmup_from_history(self):
+        """
+        Reconstrói o metrics_history usando trades reais do banco de dados (Warmup).
+        Isso permite que o robô já comece com inteligência ativa se houver dados recentes.
+        """
+        try:
+            # Buscamos trades das últimas 48 horas para ter uma base sólida
+            recent_trades = self._get_recent_trades(hours=48)
+            if len(recent_trades) < 5:
+                logger.info("🧠 Warmup: Trades insuficientes para reconstrução histórica.")
+                return
+
+            # Agrupamos trades por janelas de 1 a 4 horas para gerar snapshots estáveis
+            # (Em vez de 15 min, usamos janelas maiores para compensar a falta de dados de mercado históricos)
+            df_trades = pd.DataFrame(recent_trades)
+            if "exit_time" not in df_trades.columns:
+                return
+
+            # Garante que exit_time é datetime
+            df_trades["exit_time"] = pd.to_datetime(df_trades["exit_time"])
+            df_trades = df_trades.sort_values("exit_time")
+
+            # Geramos snapshots baseados nos fins de hora
+            last_time = df_trades["exit_time"].max()
+            start_time = df_trades["exit_time"].min()
+            
+            current_window_end = start_time + timedelta(hours=2)
+            
+            snapshots_count = 0
+            while current_window_end <= last_time and snapshots_count < 20:
+                # Filtra trades até este momento
+                trades_slice = df_trades[df_trades["exit_time"] <= current_window_end].to_dict("records")
+                
+                # Se houver pelo menos 3 trades, geramos um snapshot
+                if len(trades_slice) >= 3:
+                    # BACK-CALCULATE METRICS
+                    wr_4h = self._calculate_winrate(trades_slice, hours=4)
+                    wr_24h = self._calculate_winrate(trades_slice, hours=24)
+                    sharpe_4h = self._calculate_sharpe(trades_slice, hours=4)
+                    
+                    # Como não temos indicadores de mercado passados de forma fácil no banco,
+                    # usamos valores neutros/estimados
+                    m = MarketMetrics(
+                        timestamp=current_window_end,
+                        winrate_1h=wr_4h, # Proxy
+                        winrate_4h=wr_4h,
+                        winrate_24h=wr_24h,
+                        sharpe_1h=sharpe_4h, # Proxy
+                        sharpe_4h=sharpe_4h,
+                        sharpe_24h=sharpe_4h,
+                        avg_trade_duration=0.0,
+                        avg_sl_distance=1.5,
+                        avg_tp_distance=3.0,
+                        market_volatility=0.02,
+                        volume_anomaly=1.0,
+                        correlation_strength=0.5,
+                        trend_strength=0.5
+                    )
+                    self.metrics_history.append(m)
+                    snapshots_count += 1
+                
+                current_window_end += timedelta(hours=2)
+
+            if snapshots_count > 0:
+                logger.info(f"🧠 Warmup concluído: {snapshots_count} snapshots históricos gerados a partir de {len(recent_trades)} trades.")
+                # Força uma análise imediata se tivermos dados suficientes
+                if len(self.metrics_history) >= 5:
+                    self._analyze_and_adjust()
+
+        except Exception as e:
+            logger.error(f"❌ Erro durante warmup do Adaptive: {e}")
 
     def _collect_current_metrics(self) -> Optional[MarketMetrics]:
         """Coleta métricas atuais do mercado"""
@@ -251,7 +327,8 @@ class AdaptiveIntelligence:
     def _analyze_and_adjust(self):
         """Analisa métricas e ajusta parâmetros"""
         try:
-            if len(self.metrics_history) < 10:
+            # Reduzimos de 10 para 5 o requisito para permitir que o Warmup ative a lógica mais rápido
+            if len(self.metrics_history) < 5:
                 logger.info("📊 Métricas insuficientes para análise")
                 return
 
@@ -260,6 +337,10 @@ class AdaptiveIntelligence:
 
             # Detecta tendências e padrões
             recommendations = self._generate_recommendations(df)
+
+            # ✅ DETECÇÃO E TROCA DE REGIME (Novo)
+            current_regime = self._detect_current_regime()
+            self._sync_regime_to_all_assets(current_regime)
 
             # Aplica ajustes
             if recommendations:
@@ -416,8 +497,104 @@ class AdaptiveIntelligence:
             # Salva ajuste no banco
             self._save_adjustment_to_db(old_params, new_params, recommendations)
 
+            # 🔥 NOVO: Envia relatório proativo a cada mudança
+            try:
+                from telegram_handler import send_telegram_alert, build_learning_report
+                if getattr(config, "ENABLE_TELEGRAM_NOTIF", False):
+                    msg = build_learning_report()
+                    prefix = "🧠 <b>NOVO AJUSTE DINÂMICO APLICADO</b>\n\n"
+                    send_telegram_alert(prefix + msg)
+                    logger.info("📢 Relatório de ajuste proativo enviado para o Telegram.")
+            except Exception as e:
+                logger.error(f"Erro ao enviar relatório proativo: {e}")
+
         except Exception as e:
             logger.error(f"Erro ao aplicar ajustes: {e}")
+
+    def _detect_current_regime(self) -> str:
+        """
+        Detecta o regime de mercado atual baseado no IBOV.
+        Retornos: TREND, SIDEWAYS, PROTECTION
+        """
+        try:
+            # 1. Coleta dados do IBOV
+            ibov_data = utils.get_ibov_minute_data(period=120)  # Últimas 2 horas M1
+            if len(ibov_data) < 30:
+                return "TREND"  # Default seguro
+            
+            # 2. Calcula Volatilidade
+            returns = np.diff(np.log(ibov_data))
+            vol = np.std(returns) * np.sqrt(252 * 390)
+            
+            # 3. Lógica de Decisão
+            if vol > 0.45:  # Volatilidade extrema (Risco de Crash/Pânico)
+                return "PROTECTION"
+            
+            # Cálculo de Tendência via Médias Móveis no M1
+            ma_short = pd.Series(ibov_data).rolling(20).mean().iloc[-1]
+            ma_long = pd.Series(ibov_data).rolling(60).mean().iloc[-1]
+            
+            trend_strength = abs(ma_short / ma_long - 1.0)
+            
+            if trend_strength > 0.004:  # Tendência clara (>0.4% afastamento)
+                return "TREND"
+            else:
+                return "SIDEWAYS"
+                
+        except Exception as e:
+            logger.error(f"Erro ao detectar regime: {e}")
+            return "TREND"
+
+    def _sync_regime_to_all_assets(self, new_regime: str):
+        """
+        Atualiza o campo current_active nos arquivos JSON de calibração individual.
+        Isso faz com que o robô troque o perfil de parâmetros em tempo real.
+        """
+        try:
+            ind_dir = "calibrations_individual"
+            if not os.path.exists(ind_dir):
+                return
+            
+            files = [f for f in os.listdir(ind_dir) if f.endswith(".json")]
+            updated_count = 0
+            
+            for f in files:
+                path = os.path.join(ind_dir, f)
+                try:
+                    with open(path, "r", encoding="utf-8") as fd:
+                        data = json.load(fd)
+                    
+                    # Se o arquivo tem suporte a regimes e o regime atual é diferente do detectado
+                    if "regimes" in data and data.get("current_active") != new_regime:
+                        data["current_active"] = new_regime
+                        data["regime_updated_at"] = datetime.now().isoformat()
+                        
+                        with open(path, "w", encoding="utf-8") as fd:
+                            json.dump(data, fd, indent=4, ensure_ascii=False)
+                        updated_count += 1
+                except Exception:
+                    continue
+            
+            if updated_count > 0:
+                logger.info(f"🔄 Regime alterado para {new_regime}. {updated_count} ativos atualizados.")
+                # Notifica Telegram de forma robusta
+                try:
+                    from telegram_handler import send_telegram_alert
+                    if bool(getattr(config, "ENABLE_TELEGRAM_NOTIF", False)):
+                        emoji = "📈" if new_regime == "TREND" else "😴" if new_regime == "SIDEWAYS" else "🛡️"
+                        msg = (
+                            f"{emoji} <b>MUDANÇA DE REGIME DE MERCADO</b>\n\n"
+                            f"Detector: <b>IBOV</b>\n"
+                            f"Novo Regime: <b>{new_regime}</b>\n"
+                            f"Ativos Sincronizados: {updated_count}\n\n"
+                            f"<i>O robô ajustou automaticamente a sensibilidade dos indicadores.</i>"
+                        )
+                        send_telegram_alert(msg)
+                except Exception as ex:
+                    logger.debug(f"Erro notificação regime telegram: {ex}")
+                    
+        except Exception as e:
+            logger.error(f"Erro ao sincronizar regime: {e}")
 
     def get_current_parameters(self) -> AdaptiveParameters:
         """Retorna parâmetros atuais ajustados"""
@@ -642,6 +819,7 @@ class AdaptiveIntelligence:
                     "winrate_trend": wr_trend,
                 },
                 "last_adjustment": self.last_adjustment.isoformat() if self.last_adjustment else "Nenhum",
+                "last_adjustment_details": self.parameter_history[-1] if self.parameter_history else None,
                 "market_state": {
                     "volatility_level": vol_level,
                     "correlation_level": corr_level,

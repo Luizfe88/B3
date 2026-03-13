@@ -80,9 +80,20 @@ def generate_elite_whitelist(calib_file="calibrations.json", output_file="whitel
                     symbol = asset["symbol"]
                     # Busca os parâmetros completos da calibração para esse ativo
                     full_params = symbols_config.get(symbol, {})
+                    
+                    # Garantir que a estrutura de regimes seja preservada
+                    asset_payload = {
+                        "default": full_params,
+                        "regimes": full_params.get("regimes", {}),
+                        "current_active": "TREND", # Padrão inicial
+                        "verdict": full_params.get("verdict", verdict),
+                        "timeframe": full_params.get("timeframe", asset["timeframe"]),
+                        "updated_at": datetime.now().isoformat()
+                    }
+                    
                     asset_file = os.path.join(assets_dir, f"{symbol}.json")
                     with open(asset_file, 'w', encoding='utf-8') as f:
-                        json.dump(full_params, f, indent=4)
+                        json.dump(asset_payload, f, indent=4, ensure_ascii=False)
 
             logger.info(f"✅ Whitelist ELITE gerada com {len(elite_symbols)} ativos em {output_file}")
             logger.info(f"📊 Relatório detalhado salvo em {report_file}")

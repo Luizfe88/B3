@@ -83,7 +83,7 @@ class ExecutionEngine:
         with self._lock:
             sym_info = mt5.symbol_info(symbol)
             if sym_info is None:
-                logger.warning(f"❌ Símbolo {symbol} NÃO encontrado no servidor. Pulando permanentemente.")
+                logger.warning(f"❌ Símbolo {symbol} NÃO encontrado no servidor. Pulando este ciclo.")
                 return False
 
         if not self.is_connected():
@@ -362,7 +362,15 @@ class ExecutionEngine:
             avg_vol_5m = rates['tick_volume'].mean() if rates is not None and not rates.empty else 100
             
             # Se o volume da ordem for maior que eta * volume médio de 5min, fatiamos
-            if volume > (avg_vol_5m * eta):
+            safe_volume_limit = avg_vol_5m * eta
+            
+            # --- SLIPPAGE GUARD: Aborta se o volume for extremo (10x o volume seguro) ---
+            extreme_liquidity_threshold = safe_volume_limit * 10
+            if volume > extreme_liquidity_threshold:
+                logger.error(f"🚨 [LIQUIDITY CRASH] {symbol}: Volume solicitado ({volume}) é extremo vs liquidez segura ({extreme_liquidity_threshold:.1f}). ABORTANDO EXECUÇÃO.")
+                return False
+
+            if volume > safe_volume_limit:
                 logger.info(f"⚖️ [SMART] Volume {volume} > {avg_vol_5m} * {eta:.1f}. Fatiando execução.")
                 self.execute_advanced(symbol, side, volume, 10, comment)
                 return True

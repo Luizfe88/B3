@@ -2258,6 +2258,22 @@ def worker_wfo(
     
     best_overall_win = max(best_tf_results, key=lambda w: w["test_metrics"].get("calmar", -100))
     
+    # ✅ GERAÇÃO MULTI-REGIME (Final Window Only)
+    from optimizer_optuna import optimize_multi_regime
+    
+    # Carrega dados para a otimização final multi-regime
+    df_final = load_data_with_retry(sym, bars, timeframe=best_tf_name)
+    
+    if df_final is not None:
+        multi_res = optimize_multi_regime(
+            sym, df_final, 
+            n_trials=min(maxevals, 100), # Cap moderado para multi-regime
+            timeout=600, 
+            basket_id=basket_id
+        )
+    else:
+        multi_res = {}
+
     best_params = best_overall_win["best_params"].copy()
     best_params["timeframe"] = best_tf_name
 
@@ -2266,6 +2282,8 @@ def worker_wfo(
         "status": "ok",
         "timeframe": best_tf_name,
         "selected_params": best_params,
+        "regimes": multi_res.get("regimes", {}),
+        "verdict": multi_res.get("verdict", "UNKNOWN"),
         "test_metrics": best_overall_win["test_metrics"],
         "monte_carlo": run_monte_carlo_stress(best_overall_win["equity_curve"]),
         "equity_curve": best_overall_win["equity_curve"],
@@ -2800,7 +2818,10 @@ def run_optimizer():
                 )
             except Exception:
                 pass
-    opp_candidates = [it for it in optimized_list if it["symbol"] not in blue_required]
+    opp_candidates = [
+        it for it in optimized_list 
+        if it["symbol"] not in blue_required and it.get("trades", 0) >= 5
+    ]
     opp_sorted = sorted(
         opp_candidates,
         key=lambda x: (
@@ -3035,7 +3056,9 @@ def run_optimizer():
         )[:10]
         sectors = {}
         for s, w in portfolio_weights.items():
-            sec = SECTOR_MAP.get(s, "UNKNOWN")
+            # ✅ LIMPEZA DO SÍMBOLO (Remove sufixos .SA, .BV, etc para bater no SECTOR_MAP)
+            clean_s = s.split('.')[0].upper().strip()
+            sec = SECTOR_MAP.get(clean_s, "UNKNOWN")
             sectors[sec] = sectors.get(sec, 0.0) + w
         ideal_cap = 0.30
         selic_rate = get_macro_rate("SELIC")
@@ -3130,6 +3153,8 @@ def run_optimizer():
                         fmd.write(f"    '{k}': {v},\n")
                     fmd.write("}\n```\n\n")
                     fmd.write("### 📈 Métricas OOS\n\n")
+                    profile = classify_asset_profile(sym, ibov_df)
+                    fmd.write(f"- Perfil Sugerido: **{profile}**\n")
                     fmd.write(f"- Sharpe: {float(m.get('sharpe',0)):.2f}\n")
                     fmd.write(f"- Win Rate: {float(m.get('win_rate',0)):.1%}\n")
                     fmd.write(f"- Total Trades: {int(m.get('total_trades',0))}\n")
@@ -3234,16 +3259,104 @@ def run_optimizer():
             for sym, res in all_results.items():
                 params = res.get("selected_params") or res.get("best_params")
                 if params:
-                    # Inclui o timeframe e veredito se disponíveis
-                    params_to_save = params.copy()
-                    if "timeframe" in res: params_to_save["timeframe"] = res["timeframe"]
-                    if "verdict" in res: params_to_save["verdict"] = res["verdict"]
+                    # Estrutura robusta com suporte a regimes
+                    payload = {
+                        "default": params,
+                        "regimes": res.get("regimes", {}),
+                        "current_active": "TREND", # Inicia sempre em TREND por padrão
+                        "timeframe": res.get("timeframe", "M15"),
+                        "verdict": res.get("verdict", "UNKNOWN"),
+                        "updated_at": datetime.now().isoformat()
+                    }
                     
                     with open(os.path.join(ind_dir, f"{sym}.json"), "w", encoding="utf-8") as f:
-                        json.dump(params_to_save, f, indent=4)
-            logger.info(f"📂 {len(all_results)} arquivos individuais salvos em '{ind_dir}/'")
+                        json.dump(payload, f, indent=4, ensure_ascii=False)
+            logger.info(f"📂 {len(all_results)} arquivos individuais (MULTI-REGIME) salvos em '{ind_dir}/'")
+
+            # ✅ NOVO: Gera Relatório Didático
+            generate_didactic_report(all_results)
+
         except Exception as e:
             logger.error(f"❌ Erro ao salvar calibrations.json: {e}")
+
+
+def generate_didactic_report(all_results: Dict[str, Any]):
+    """
+    Gera um relatório visual e didático (Markdown) sobre os resultados da otimização.
+    """
+    try:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        report_path = os.path.join(OPT_OUTPUT_DIR, f"BRAIN_REPORT_WEEKLY.md")
+        
+        lines = [
+            f"# 🧠 Relatório Didático - XP3 Inteligence v5",
+            f"*Gerado em: {ts}*",
+            "",
+            "## 🧭 O que são os Regimes de Mercado?",
+            "O robô agora não usa apenas uma configuração, mas três 'personalidades' que ele troca automaticamente:",
+            "",
+            "- 📈 **TREND (Tendência)**: Ativado quando o mercado está 'andando'. O foco é surfar grandes ondas e maximizar o lucro total.",
+            "- 😴 **SIDEWAYS (Lateral)**: Ativado quando o mercado está 'andando de lado'. O foco é a precisão (Win Rate) e não ser pego em falsos rompidos.",
+            "- 🛡️ **PROTECTION (Proteção)**: Ativado em momentos de pânico ou volatilidade extrema. O foco total é não perder dinheiro (Capital Preservation).",
+            "",
+            "---",
+            "",
+            "## 📊 Resumo de Ativos Calibrados",
+            "Abaixo estão os ativos que passaram nos nossos testes de estresse (WFO + Monte Carlo):",
+            "",
+            "| Ativo | Timeframe | Veredito | Sharpe | Win Rate | Trades | Regimes Gerados |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |"
+        ]
+        
+        for sym, res in sorted(all_results.items()):
+            m = res.get("test_metrics", {})
+            params = res.get("selected_params") or res.get("best_params")
+            tf = res.get("timeframe", "M15")
+            verdict = res.get("verdict", "OK")
+            
+            # Emojis para o veredito
+            v_emoji = "💎" if "SNIPER" in verdict else "🚀" if "HUNTER" in verdict else "✅"
+            
+            # Formatação de métricas
+            sr = f"{float(m.get('sharpe', 0)):.2f}"
+            wr = f"{float(m.get('win_rate', 0)):.1%}"
+            tr = int(m.get('total_trades', 0))
+            
+            # Regimes disponíveis
+            regs = res.get("regimes", {})
+            reg_icons = []
+            if "TREND" in regs: reg_icons.append("📈")
+            if "SIDEWAYS" in regs: reg_icons.append("😴")
+            if "PROTECTION" in regs: reg_icons.append("🛡️")
+            reg_str = " ".join(reg_icons) if reg_icons else "⚠️ Só Default"
+            
+            lines.append(f"| **{sym}** | {tf} | {v_emoji} {verdict} | {sr} | {wr} | {tr} | {reg_str} |")
+            
+        lines += [
+            "",
+            "---",
+            "",
+            "## 💡 Próximos Passos",
+            "1. **Leitura Automática**: O robô principal já está configurado para ler esses arquivos JSON.",
+            "2. **Monitoramento do IBOV**: A IA Adaptativa (`adaptive_intelligence.py`) vai ficar de olho no IBOV e trocar os ícones acima em tempo real para você.",
+            "3. **Telegram**: Fique atento às notificações. Sempre que o regime mudar, você receberá um alerta colorido.",
+            "",
+            "---",
+            "*XP3 Pro - Advanced Algorithmic Trading System*"
+        ]
+        
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+            
+        logger.info(f"✨ Relatório Didático gerado com sucesso: {report_path}")
+        
+        # Também gera o mesmo relatório como 'latest' para fácil acesso
+        latest_path = os.path.join(OPT_OUTPUT_DIR, "BRAIN_REPORT_LATEST.md")
+        with open(latest_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+            
+    except Exception as e:
+        logger.error(f"Erro ao gerar relatório didático: {e}")
 
 
 if __name__ == "__main__":

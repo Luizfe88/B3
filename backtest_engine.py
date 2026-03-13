@@ -78,7 +78,8 @@ class B3BacktestEngine:
             position_size = 100 * np.random.randint(1, 11)  # 100-1000 ações
 
             # Custos
-            slippage_pct = self.costs["slippage_pct"]
+            slippage_pct = self.costs.get("slippage_pct", 0.0)
+            slippage_brl = self.costs.get("slippage_brl", 0.02)
             commission = self.costs["commission_per_order"]
 
             # PnL bruto
@@ -89,7 +90,9 @@ class B3BacktestEngine:
             )
 
             # Aplica slippage (2x: entrada e saída)
-            slippage_cost = abs(gross_pnl) * slippage_pct * 2
+            slippage_cost_pct = abs(gross_pnl) * slippage_pct * 2
+            slippage_cost_fixed = position_size * slippage_brl * 2
+            slippage_cost = slippage_cost_pct + slippage_cost_fixed
 
             # Taxa sobre lucro
             tax = 0
@@ -159,7 +162,7 @@ class B3BacktestEngine:
 
         # Custos totais
         total_slippage = sum(
-            abs(t["gross_pnl"]) * self.costs["slippage_pct"] * 2 for t in self.trades
+            abs(t["gross_pnl"]) * self.costs.get("slippage_pct", 0.0) * 2 + t["position_size"] * self.costs.get("slippage_brl", 0.02) * 2 for t in self.trades
         )
         total_commission = self.costs["commission_per_order"] * total_trades
         total_tax = sum(

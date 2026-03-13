@@ -111,9 +111,10 @@ class CalibrationManager:
     def get_calibrated_params(self, symbol: str, basket_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Retorna os parâmetros mesclando:
-        1. Parâmetros específicos do símbolo
-        2. Parâmetros da cesta (cluster)
-        3. Parâmetros globais do config
+        1. Multi-Regime do arquivo individual (Se existir)
+        2. Parâmetros específicos do símbolo (calibrations.json)
+        3. Parâmetros da cesta (cluster)
+        4. Parâmetros globais do config
         """
         params = {}
         
@@ -127,13 +128,50 @@ class CalibrationManager:
         basket_params = self.calibrations.get("clusters", {}).get(basket_key, {})
         params.update(basket_params)
         
-        # 2. Específicos do Símbolo
-        symbol_params = self.calibrations.get("symbols", {}).get(symbol, {})
-        params.update({k: v for k, v in symbol_params.items() if k != "kelly"})
+        # 2. Calibração Individual (Preferência para o NOVO Sistema Multi-Regime)
+        ind_dir = "calibrations_individual"
+        ind_file = os.path.join(ind_dir, f"{symbol}.json")
         
-        # 3. Kelly (se disponível)
+        if os.path.exists(ind_file):
+            try:
+                with open(ind_file, 'r', encoding='utf-8') as f:
+                    ind_data = json.load(f)
+                
+                # Se for o novo formato com regimes
+                if "regimes" in ind_data and "current_active" in ind_data:
+                    regime = ind_data["current_active"]
+                    regime_params = ind_data["regimes"].get(regime, {}).get("best_params", {})
+                    if regime_params:
+                        params.update(regime_params)
+                        # Preserva metadados
+                        params["active_regime"] = regime
+                        params["timeframe"] = ind_data.get("timeframe", params.get("timeframe", "M15"))
+                        params["verdict"] = ind_data.get("verdict", "OPTIMIZED")
+                        logger.debug(f"🎯 {symbol}: Usando perfil {regime} do arquivo individual.")
+                else:
+                    # Formato antigo ou default
+                    params.update({k: v for k, v in ind_data.items() if k != "kelly"})
+            except Exception as e:
+                logger.error(f"Erro ao ler calibração individual de {symbol}: {e}")
+
+        # 3. Específicos do Símbolo (calibrations.json - Legado/Fallback)
+        symbol_params = self.calibrations.get("symbols", {}).get(symbol, {})
+        # Apenas atualiza se não foi sobrescrevido pelo arquivo individual
+        for k, v in symbol_params.items():
+            if k != "kelly" and k not in params:
+                params[k] = v
+        
+        # 4. Kelly (se disponível)
         if "kelly" in symbol_params:
             params["kelly"] = symbol_params["kelly"]
+        elif os.path.exists(ind_file):
+            # Tenta buscar Kelly do individual se não tiver no global
+             try:
+                with open(ind_file, 'r', encoding='utf-8') as f:
+                    ind_data = json.load(f)
+                    if "kelly" in ind_data:
+                        params["kelly"] = ind_data["kelly"]
+             except: pass
             
         return params
 

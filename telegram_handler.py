@@ -219,6 +219,46 @@ def build_learning_report() -> str:
             f"🧠 <b>XP3 PRO - APRENDIZADO DIÁRIO</b>\n\n"
             f"🔧 Ajustes realizados hoje: <b>{report.get('total_adjustments', 0)}</b>\n"
             f"⏰ Último ajuste: {last_adj_time}\n\n"
+        )
+
+        # Adiciona detalhes da última mudança
+        adj_details = report.get("last_adjustment_details")
+        if adj_details:
+            old = adj_details.get("old_params", {})
+            new = adj_details.get("new_params", {})
+            recs = adj_details.get("recommendations", {})
+
+            msg += "🔄 <b>Última Mudança Dinâmica</b>\n"
+            
+            changes = []
+            if old.get("ml_confidence_threshold") != new.get("ml_confidence_threshold"):
+                changes.append(f"• ML Conf: {old.get('ml_confidence_threshold', 0):.2f} ➔ <b>{new.get('ml_confidence_threshold', 0):.2f}</b>")
+            if old.get("kelly_fraction_multiplier") != new.get("kelly_fraction_multiplier"):
+                changes.append(f"• Kelly Mult: {old.get('kelly_fraction_multiplier', 0):.2f}x ➔ <b>{new.get('kelly_fraction_multiplier', 0):.2f}x</b>")
+            if old.get("spread_filter_multiplier") != new.get("spread_filter_multiplier"):
+                changes.append(f"• Spread Lim: {old.get('spread_filter_multiplier', 0):.2f}x ➔ <b>{new.get('spread_filter_multiplier', 0):.2f}x</b>")
+            
+            if changes:
+                msg += "\n".join(changes) + "\n"
+
+            # Tradução amigável dos motivos
+            motivos_map = {
+                "increase_confidence_threshold": "Queda no Winrate",
+                "decrease_confidence_threshold": "Alta no Winrate",
+                "reduce_kelly_multiplier": "Alta Volatilidade/Risco",
+                "increase_kelly_multiplier": "Mercado Favorável",
+                "increase_sl_distance": "Ruído de Volatilidade",
+                "reduce_position_sizes": "Sharpe Ratio Baixo",
+                "increase_spread_filter": "Spread Elevado",
+                "clamp_sl_max_percent": "Anomalia de Volume"
+            }
+            
+            motivos = [motivos_map.get(k, k) for k in recs.keys()]
+            if motivos:
+                msg += f"💡 <b>Motivo:</b> {', '.join(motivos)}\n"
+            msg += "\n"
+
+        msg += (
             f"📊 <b>Métricas de Desempenho (Adaptive)</b>\n"
             f"• Winrate 24h: {metrics.get('avg_winrate_24h', 0):.1%}\n"
             f"• Tendência WR: {metrics.get('winrate_trend', '')}\n"

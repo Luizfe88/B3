@@ -100,7 +100,7 @@ class EnsembleOptimizer:
 
     def __init__(self, history_file="ml_trade_history.json", qtable_file="qtable.npy"):
         self.models = {}
-        if ensure_ml_deps_async(5):
+        if ensure_ml_deps():
             self.models = {
                 "rf": RF(n_estimators=120, max_depth=8, random_state=42),
                 "gb": GB(n_estimators=100, learning_rate=0.05, max_depth=6),

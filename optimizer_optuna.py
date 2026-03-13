@@ -1122,7 +1122,7 @@ def objective(trial, symbol, df, ml_model=None):
 
 
 def optimize_with_optuna(
-    symbol, df_train, n_trials=150, timeout=1500, base_slippage=0.001, basket_id=1
+    symbol, df_train, n_trials=150, timeout=1500, base_slippage=0.001, basket_id=1, regime="TREND"
 ):
     # Ajuste de defaults para busca mais ampla
     if n_trials == 150:
@@ -1243,16 +1243,16 @@ def optimize_with_optuna(
             penalty = 0.0
             reason = []
             if trades == 0:
-                penalty += 5.0
+                penalty += 10.0
                 reason.append("ZERO_TRADES")
-            elif trades < 3:
-                penalty += 2.0
-                reason.append(f"Trades={trades} (crítico)")
             elif trades < 5:
-                penalty += 0.8
-                reason.append(f"Trades={trades} (baixo)")
+                penalty += 5.0
+                reason.append(f"Trades={trades} (crítico/insuficiente)")
             elif trades < 8:
-                penalty += 0.3
+                penalty += 1.5
+                reason.append(f"Trades={trades} (baixo)")
+            elif trades < 12:
+                penalty += 0.5
                 reason.append(f"Trades={trades} (ok-)")
             if dd > 0.70:
                 penalty += (dd - 0.70) * 3.0
@@ -1281,14 +1281,31 @@ def optimize_with_optuna(
                 bonus += 0.2
                 reason.append("BONUS_LOW_DD")
 
-            score_base = (wr * 2.0) + (pf * 1.2)
-            score_final = score_base + bonus - penalty
+            # ✅ SCORE POR REGIME
+            if regime == "TREND":
+                # Foco: Profit Factor e Retorno (Surfar a onda)
+                score_final = (pf * 1.5) + (metrics.get("total_return", 0.0) * 2.0) + bonus - penalty
+            elif regime == "SIDEWAYS":
+                # Foco: Win Rate e Sortino (Consistência em baixa volatilidade)
+                score_final = (wr * 3.0) + (metrics.get("sortino", 0.0) * 1.2) + bonus - penalty
+                # Penaliza ADX alto se estiver buscando perfil lateral
+                if params.get("adx_threshold", 0) > 20: 
+                    score_final -= 1.0
+            elif regime == "PROTECTION":
+                # Foco: Capital Preservation (Mínimo DD)
+                score_final = ((1.0 - dd) * 4.0) + (pf * 1.0) + bonus - penalty
+                # Penaliza trades excessivos se o objetivo é proteção
+                if trades > 30: score_final -= 0.5
+            else:
+                # Fallback Sharpista
+                score_final = (metrics.get("sharpe", 0.0) * 2.0) + bonus - penalty
+
             if penalty > 0 or bonus > 0:
                 log_rejection(
                     symbol,
                     trial.number,
                     "METRICS",
-                    f"{' | '.join(reason)} | Score={score_final:.2f}",
+                    f"Regime={regime} | {' | '.join(reason)} | Score={score_final:.2f}",
                 )
             return -score_final
 
@@ -1359,11 +1376,11 @@ def diagnostico_final(metrics, params):
     print(base)
     lines.append(base)
 
-    # ✅ TRAVA SOBERANA: Reprovação imediata se PF < 1.0 ou trades insuficientes
-    if pf < 1.0 or trades < 3:
+    # ✅ TRAVA SOBERANA: Reprovação imediata se PF < 1.0 ou trades insuficientes (Mínimo 5)
+    if pf < 1.0 or trades < 5:
         msg = [
             "❌ VEREDITO: REPROVADO",
-            "   Motivo: Fator de lucro negativo ou amostragem insuficiente."
+            "   Motivo: Fator de lucro negativo ou amostragem insuficiente (Mínimo 5 trades)."
         ]
         for m in msg:
             print(m)
@@ -1474,7 +1491,60 @@ def diagnostico_final(metrics, params):
     # ✅ Retorna o veredito para persistência
     full_text = "\n".join(lines)
     if "SNIPER DE ELITE" in full_text: return "SNIPER_ELITE"
+    if "SNIPER MODERADO" in full_text: return "SNIPER_MODERATE"
     if "TREND HUNTER" in full_text: return "TREND_HUNTER"
+    if "FALSO POSITIVO" in full_text: return "FALSE_POSITIVE"
+    if "INCONCLUSIVO" in full_text: return "INCONCLUSIVE"
     if "INTERMEDIÁRIO DE ALTA QUALIDADE" in full_text: return "INTERMEDIATE_HIGH"
+    if "INTERMEDIÁRIO MODERADO" in full_text: return "INTERMEDIATE_MODERATE"
+    if "INTERMEDIÁRIO FRACO" in full_text: return "INTERMEDIATE_WEAK"
     if "REPROVADO" in full_text: return "REJECTED"
     return "UNKNOWN"
+
+def optimize_multi_regime(symbol, df_train, n_trials=100, timeout=600, base_slippage=0.001, basket_id=1):
+    """
+    Executa otimizações para os 3 regimes (TREND, SIDEWAYS, PROTECTION) e retorna consolidado.
+    """
+    regimes = ["TREND", "SIDEWAYS", "PROTECTION"]
+    results = {"status": "SUCCESS", "regimes": {}}
+    
+    # 1. Pré-calcula ML model uma única vez para economizar tempo
+    # Usamos uma chamada dummy ou extraímos a lógica de ML
+    # Por simplicidade, vamos permitir que a primeira chamada gere o ML e as outras reutilizem
+    
+    ml_model = None
+    first_res = None
+    
+    for regime in regimes:
+        logger.info(f"🧠 {symbol}: Otimizando para regime {regime}...")
+        # Na primeira iteração, deixa o optimize_with_optuna calcular o ML
+        # Nas seguintes, poderíamos passar o ML (se mudarmos a assinatura)
+        res = optimize_with_optuna(
+            symbol, df_train, 
+            n_trials=n_trials, 
+            timeout=timeout, 
+            base_slippage=base_slippage, 
+            basket_id=basket_id,
+            regime=regime
+        )
+        
+        if res.get("status") == "SUCCESS":
+            results["regimes"][regime] = {
+                "best_params": res.get("best_params"),
+                "verdict": res.get("verdict"),
+                "score": res.get("best_score")
+            }
+            if ml_model is None:
+                ml_model = res.get("ml_model")
+        else:
+            results["regimes"][regime] = {"status": "FAILED", "reason": res.get("reason")}
+
+    results["ml_model"] = ml_model
+    # Define um default (TREND) para compatibilidade
+    if "TREND" in results["regimes"] and "best_params" in results["regimes"]["TREND"]:
+        results["best_params"] = results["regimes"]["TREND"]["best_params"]
+        results["verdict"] = results["regimes"]["TREND"]["verdict"]
+    else:
+        results["status"] = "FAILED"
+        
+    return results

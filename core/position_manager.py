@@ -23,6 +23,8 @@ class PositionManager:
         self.active_positions = {}
         # Rastreamento de ordens pendentes (últimos 3 segundos)
         self.pending_orders = []  # Lista de (timestamp, symbol, volume, price)
+        # Rastreamento do max_floating_profit por ticket (lucro flutuante)
+        self.max_profits = {}
 
     def get_open_positions(self, filter_magic: bool = True) -> List[Dict[str, Any]]:
         raw_positions = self.execution.get_positions()
@@ -115,6 +117,9 @@ class PositionManager:
                         continue
                     
                     ind_ts = utils.quick_indicators_custom(p_sym, utils.TIMEFRAME_BASE, df=ts_candles)
+                    if not ind_ts or ind_ts.get("error"):
+                        continue
+                        
                     atr = ind_ts.get("atr", 0.0) if ind_ts else 0.0
                     adx = ind_ts.get("adx", 0.0) if ind_ts else 0.0
 
@@ -179,6 +184,9 @@ class PositionManager:
             # 🚀 NOVO: Monitoramento de SL/TP Virtual (Código local que fecha a ordem se o preço bater)
             self.monitor_virtual_stops(positions)
 
+            # 🛡️ NOVO: Monitoramento de Proteção de Lucro (Break-Even e High-Water Mark)
+            self.monitor_profit_protections(positions)
+
         except Exception as ts_outer_err:
             logger.error(f"❌ Erro no loop de trailing stop: {ts_outer_err}")
 
@@ -224,12 +232,141 @@ class PositionManager:
                 else:
                     logger.error(f"❌ [VIRTUAL STOP] Falha ao fechar {symbol} via {reason}.")
 
+    def monitor_profit_protections(self, positions: List[Dict[str, Any]]):
+        """
+        Monitoramento de Proteção de Lucro e Risco (BRL).
+        - Escudo de Lucro Dinâmico (High-Water Mark Trailing)
+        - Hard Dollar Stop (Travão de Emergência)
+        - Auto Break-Even (Risco Zero Real)
+        """
+        active_tickets = set()
+
+        for p in positions:
+            symbol = p.get("symbol")
+            ticket = p.get("ticket")
+            p_type = p.get("type")
+            profit = p.get("profit", 0.0)
+            entry_price = p.get("entry_price", 0.0)
+            sl = p.get("sl", 0.0)
+
+            if not ticket or not symbol:
+                continue
+
+            active_tickets.add(ticket)
+
+            # 1. Hard Dollar Stop (Travão de Emergência)
+            if profit <= getattr(config, "MAX_LOSS_BRL", -300.00):
+                logger.error(f"🚨 [EMERGENCY EXIT] {symbol} (Ticket: {ticket}) atingiu prejuízo máximo de R${profit:.2f}. Fechando!")
+                self.execution.close_position(ticket, symbol)
+                continue
+
+            # Atualiza Max Profit
+            current_max_profit = self.max_profits.get(ticket, 0.0)
+            if profit > current_max_profit:
+                self.max_profits[ticket] = profit
+                current_max_profit = profit
+
+            # 2. Escudo de Lucro Dinâmico (High-Water Mark Trailing)
+            activation_threshold = getattr(config, "PROFIT_ACTIVATION_THRESHOLD_BRL", 250.00)
+            trailing_percent = getattr(config, "PROFIT_TRAILING_PERCENT", 0.25)
+
+            if current_max_profit >= activation_threshold:
+                # Se recuou o percentual configurado do pico
+                allowed_drawdown = current_max_profit * trailing_percent
+                trailing_stop_profit = current_max_profit - allowed_drawdown
+
+                if profit <= trailing_stop_profit:
+                    logger.info(f"🛡️ [DYNAMIC EXIT] {symbol} (Ticket: {ticket}) ativou escudo de lucro. Pico: R${current_max_profit:.2f}, Atual: R${profit:.2f}. Fechando!")
+                    self.execution.close_position(ticket, symbol)
+                    continue
+
+            # 3. Auto Break-Even (Risco Zero Real)
+            be_threshold = getattr(config, "BREAK_EVEN_TRIGGER_BRL", 150.00)
+            if current_max_profit >= be_threshold:
+                # Calcula breakeven_price considerando o custo do slippage
+                slippage = getattr(config, "SLIPPAGE_BRL", 0.02)
+                be_price = entry_price + slippage if p_type == "BUY" else entry_price - slippage
+                
+                # Só move se o sl atual for pior que o be_price
+                sl_improved = (p_type == "BUY" and be_price > sl) or (p_type == "SELL" and (sl == 0.0 or be_price < sl))
+
+                if sl_improved:
+                    try:
+                        import utils
+                        cur_price = p.get("current_price", 0.0)
+                        # Validar stop level para garantir que é possível colocar a ordem no book
+                        valid_be_price, _ = utils.validate_stops_level(symbol, p_type, cur_price, be_price, p.get("tp", 0.0))
+                        
+                        valid_improved = (p_type == "BUY" and valid_be_price > sl) or (p_type == "SELL" and (sl == 0.0 or valid_be_price < sl))
+                        if valid_improved:
+                            logger.info(f"✅ [RISK-FREE] {symbol} (Ticket: {ticket}) movendo SL para Break-Even: R${valid_be_price:.4f}")
+                            if hasattr(self.execution, "modify_sl"):
+                                self.execution.modify_sl(ticket, valid_be_price)
+                    except Exception as e:
+                        logger.error(f"Erro ao aplicar Break-Even em {symbol}: {e}")
+
+        # Limpar tickets que não estão mais abertos
+        self.max_profits = {k: v for k, v in self.max_profits.items() if k in active_tickets}
+
     def check_risk_limits(self) -> bool:
         """
         Verifica se limites globais de risco foram atingidos.
         """
         # Implementar verificação de perda diária máxima
         return True
+
+    def validate_and_size_order(self, symbol: str, side: str, base_volume: float, conviction: float) -> tuple[float, bool, str]:
+        """
+        Valida a entrada e calcula o volume final baseado em convicção e estado da posição atual.
+        
+        Regras:
+        1. Sizing Dinâmico: 25% (60-70), 50% (70-85), 100% (85+)
+        2. Anti-Martingale: Bloqueia nova entrada se a posição atual do par estiver no prejuízo.
+        3. Smart Pyramiding: Permite adição se estiver no lucro, respeitando limite de pirâmides.
+        
+        Returns:
+            (final_volume, can_execute, reason)
+        """
+        # --- 1. SIZING DINÂMICO POR CONVICÇÃO ---
+        conviction_pct = conviction * 100
+        if conviction_pct < 60:
+            return 0.0, False, f"Conviccao insuficiente ({conviction_pct:.1f}%)"
+        
+        if conviction_pct < 70:
+            dynamic_multiplier = 0.25  # Entrada Tatica
+            label = "Tatica"
+        elif conviction_pct < 85:
+            dynamic_multiplier = 0.50  # Sniper Moderado
+            label = "Moderada"
+        else:
+            dynamic_multiplier = 1.00  # Conviccao Maxima
+            label = "Extrema"
+
+        final_volume = base_volume * dynamic_multiplier
+        # Garantir volume mínimo (normalize_volume deve ser chamado fora ou aqui)
+        # Por segurança, mantemos a lógica de retorno de volume bruto para o bot normalizar.
+
+        # --- 2. SMART PYRAMIDING & ANTI-MARTINGALE ---
+        open_positions = self.get_open_positions(filter_magic=False)
+        symbol_positions = [p for p in open_positions if p["symbol"] == symbol]
+
+        if symbol_positions:
+            total_symbol_profit = sum(p["profit"] for p in symbol_positions)
+            
+            # --- ANTI-MARTINGALE: Bloqueio se negativo ---
+            if total_symbol_profit < 0:
+                return 0.0, False, f"[ANTI-MARTINGALE] {symbol} Abortado: Posicao atual no prejuizo (R${total_symbol_profit:.2f})."
+
+            # --- SMART PYRAMIDING: Cap de piramides ---
+            max_pyramids = getattr(config, "MAX_PYRAMIDS_PER_SYMBOL", 3)
+            if len(symbol_positions) >= max_pyramids:
+                return 0.0, False, f"[PYRAMIDING] {symbol} Cap de piramides atingido ({len(symbol_positions)}/{max_pyramids})."
+            
+            logger.info(f"PYRAMIDING: {symbol} Autorizado. Adicionando lote {label} a favor da tendencia.")
+            return final_volume, True, f"OK (Pyramiding {label})"
+        else:
+            logger.info(f"ENTRY: {symbol} Iniciando Nova Operacao ({label}). Volume: {final_volume:.2f}")
+            return final_volume, True, f"OK ({label})"
 
     def get_total_exposure(self) -> float:
         """

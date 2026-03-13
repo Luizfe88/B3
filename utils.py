@@ -245,6 +245,39 @@ def str_to_tf(tf_str: str):
     return mapping.get(str(tf_str).upper(), mt5.TIMEFRAME_M15)
 
 
+def is_future(symbol: str) -> bool:
+    """Verifica se o símbolo é um contrato futuro da B3 (WIN, WDO, etc)."""
+    if not symbol:
+        return False
+    s = str(symbol).upper().replace(".SA", "")
+    # Prefixos de contratos futuros e mini-contratos na B3
+    # O usuário manifestou desejo de focar apenas em ações, 
+    # então esta função ajuda a filtrar/ignorar estes ativos.
+    futures_prefixes = ["WIN", "WDO", "IND", "DOL", "CCM", "BGI", "ICF"]
+    return any(s.startswith(p) for p in futures_prefixes)
+
+
+def is_futures(symbol: str) -> bool:
+    """Alias para is_future para compatibilidade."""
+    return is_future(symbol)
+
+
+def is_stock(symbol: str) -> bool:
+    """Verifica se o símbolo é uma ação da B3."""
+    if not symbol:
+        return False
+    # Evita que futuros sejam classificados como ações
+    if is_future(symbol):
+        return False
+
+    # Uma ação da B3 geralmente tem 4 letras seguidas de 1 ou 2 números
+    # Ex: PETR4, VALE3, ABCB4
+    import re
+
+    s = str(symbol).upper().replace(".SA", "")
+    return bool(re.match(r"^[A-Z]{4}[0-9]{1,2}$", s))
+
+
 def atomic_save_json(path: str, data: dict) -> bool:
     try:
         p = Path(path)
@@ -888,39 +921,22 @@ def cached_symbol_info(symbol: str) -> Optional[mt5.SymbolInfo]:
         return mt5.symbol_info(symbol)
 
 
-def is_future(symbol: str) -> bool:
+    return False
+
+
+def is_valid_b3_ticker(symbol: str) -> bool:
     """
-    Detecta se símbolo é futuro da B3.
-    Versão robusta para evitar falsos positivos.
+    Valida se o ticker pertence ao mercado à vista da B3 (Ações e Units).
+    Aceita apenas terminações 3, 4, 5, 6 e 11.
+    Filtra Opções (séries de letras), Warrants e outros derivativos.
     """
     if not symbol:
         return False
 
-    s = symbol.upper().strip()
-
-    # Prefixos definitivos de futuros B3
-    FUTURE_PREFIXES = [
-        "WIN",  # Mini Índice
-        "WDO",  # Mini Dólar
-        "IND",  # Índice Cheio
-        "DOL",  # Dólar Cheio
-        "WSP",  # Mini S&P
-        "SMALL",  # Small Caps
-    ]
-
-    # Verifica se começa com prefixo de futuro
-    # E se tem código de vencimento após (letra ou número)
-    for prefix in FUTURE_PREFIXES:
-        if s.startswith(prefix) and len(s) > len(prefix):
-            next_char = s[len(prefix)]
-            if next_char.isalnum():  # WIN202502, WDOJ25, etc
-                return True
-
-    # Verifica símbolo com $ (algumas corretoras)
-    if "$" in s:
-        return True
-
-    return False
+    # Regex: 4 letras seguidas de 3, 4, 5, 6 ou 11
+    # Ex: PETR4 (OK), VALE3 (OK), SANB11 (OK), GOLL54 (FAIL), PETRH26 (FAIL)
+    pattern = r"^[A-Z]{4}(3|4|5|6|11)$"
+    return bool(re.match(pattern, symbol.upper().strip()))
 
 
 def safe_tick_to_dict(tick_data):

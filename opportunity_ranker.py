@@ -99,6 +99,11 @@ class OpportunityRanker:
             scores, is_valid = self._extract_scores(decision)
             
             # --- FAIL-FAST: Descarta ativos inválidos ou sem convicção real ---
+            import utils
+            if not utils.is_valid_b3_ticker(symbol):
+                logger.warning(f"🚨 [{symbol}] Descartado: Ticker não pertence ao universo B3 à vista (Opção/Derivativo).")
+                continue
+
             if not is_valid:
                 logger.warning(f"⚠️ [{symbol}] Descartado por falta de dados reais ou score ML neutro (valid=False).")
                 continue

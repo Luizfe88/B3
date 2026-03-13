@@ -49,6 +49,10 @@ risk_limits:
   max_total_exposure_pct: 1.50 # 150% do capital total (alavancagem controlada)
   max_new_positions_per_hour: 10 # Aumentado para 10 (top 10 por ciclo)
   market_regime_filter: True # Ativa filtro de regime de mercado
+  max_loss_brl: -300.00 # Travão de Emergência
+  break_even_trigger_brl: 150.00 # Risco Zero
+  profit_activation_threshold_brl: 250.00 # Escudo de Lucro
+  profit_trailing_percent: 0.25 # Recuo do pico do lucro
 
 # -- FILTROS DE ENTRADA --
 # Regra #1: Apenas os filtros essenciais e rápidos
@@ -82,6 +86,7 @@ safety_mode:
 # Regra #7: Simulação realista para walk-forward backtest
 backtest_costs:
   slippage_pct: 0.05      # % de slippage médio por ordem
+  slippage_brl: 0.02      # Custos fixo de slippage em R$ BRL
   commission_per_order: 4.90 # Custo de corretagem por ordem (ex: valor fixo)
   tax_on_profit_pct: 0.20 # 20% de IR sobre o lucro (Day Trade)
 

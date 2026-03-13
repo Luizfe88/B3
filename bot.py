@@ -107,6 +107,10 @@ def main():
     valid_symbols = []
 
     for sym in all_symbols:
+        if not utils.is_valid_b3_ticker(sym):
+            logger.warning(f"🚨 [{sym}] Ticker inválido para o mercado à vista. Removido da lista de scans.")
+            continue
+            
         if execution.safe_symbol_select(sym, True):
             valid_symbols.append(sym)
         else:
@@ -208,8 +212,12 @@ def main():
             opportunities = [] # Array para acumular scans
             total_symbols = len(symbols)
 
-            symbols_to_remove = []
             for i, symbol in enumerate(valid_symbols):
+                # ✅ IGNORE: Pula índices futuros e mini-contratos conforme configuração 'Ações Apenas'
+                if utils.is_future(symbol):
+                    logger.warning(f"⚠️ {symbol} identificado como futuro. Ignorando conforme configuração 'Ações Apenas'.")
+                    continue
+
                 # Log de progresso (a cada 25 ativos ou no início/fim)
                 if (i + 1) % 25 == 0 or i == 0 or (i + 1) == total_symbols:
                     logger.info(f"🔍 Scan em progresso: {i+1}/{total_symbols} ativos processados...")
@@ -217,8 +225,7 @@ def main():
                 try:
                     # 1. Coleta dados de mercado (Market Data)
                     if not execution.safe_symbol_select(symbol, True):
-                        logger.warning(f"⚠️ {symbol} indisponível. Removendo do scan para evitar retries.")
-                        symbols_to_remove.append(symbol)
+                        logger.warning(f"⚠️ {symbol} indisponível. Pulando este ciclo.")
                         continue
 
                     # 1.1 Candles (utiliza timeframe calibrado ou M15) - Cache do terminal geralmente rápido
@@ -311,12 +318,6 @@ def main():
                     import traceback
                     traceback.print_exc()
 
-            # Remove ativos que falharam no scan permanentemente para esta sessão
-            if symbols_to_remove:
-                for sym in symbols_to_remove:
-                    if sym in valid_symbols:
-                        valid_symbols.remove(sym)
-                logger.info(f"🧹 Limpeza concluída: {len(symbols_to_remove)} ativos removidos. Restam {len(valid_symbols)} na lista.")
 
             # =======================================================
             # 💡 FASE 2: RANK E EXECUÇÃO (Global Context)
@@ -373,81 +374,45 @@ def main():
                             continue
                         # ────────────────────────────────────────────────────────────────────────────
 
-                        # Valida se já tem posição (Hard Block)
-                        open_positions = position_manager.get_open_positions(filter_magic=False)
-                        already_has_buy = False
-                        for p in open_positions:
-                            if p["symbol"] == symbol:
-                                if p["type"] == "SELL":
-                                    logger.info(
-                                        f"🔄 Invertendo mão em {symbol} (SELL -> BUY)"
-                                    )
-                                    execution.close_position(p["ticket"], symbol)
-                                else:
-                                    already_has_buy = True
-                                    break
-                                    
-                        if already_has_buy:
-                            logger.info(f"⏭️ Posição de COMPRA já existente em {symbol}. Mantendo. Bloqueando nova ordem.")
-                            continue
-
-                        # Verifica ordens pendentes
-                        pending_exposure = position_manager.get_pending_exposure()
-                        if symbol in pending_exposure and pending_exposure[symbol] > 0:
-                            logger.info(f"⏳ Ordem pendente já existe para {symbol}. Ignorando nova entrada.")
-                            continue
-
-                        # Cálculo de Lote:
-                        # 1. Base: Config do capital (configurável)
-                        # 2. Ajuste: size_multiplier do agente
+                        # --- SMART SIZING & PYRAMIDING (Centralizado no PositionManager) ---
                         base_allocation_pct = config.MAX_CAPITAL_ALLOCATION_PCT
-                        size_multiplier = decision.get("size", 0.0)
+                        target_exposure = equity * base_allocation_pct * decision.get("size", 1.0)
+                        
+                        raw_qty = target_exposure / current_price if current_price > 0 else 0
+                        qty_normalized = utils.normalize_volume(symbol, raw_qty)
 
-                        # --- SIZING DINÂMICO POR FAIXA DE CONVICÇÃO ---
-                        conviction_pct = decision.get("conviction", 0.0) * 100
-                        if conviction_pct < 60:
-                            dynamic_multiplier = 0.0
-                        elif conviction_pct < 70:
-                            dynamic_multiplier = 0.25
-                        elif conviction_pct < 85:
-                            dynamic_multiplier = 0.50
-                        else:
-                            dynamic_multiplier = 1.0
-                            
-                        size_multiplier *= dynamic_multiplier
+                        final_volume, can_execute, msg = position_manager.validate_and_size_order(
+                            symbol, "BUY", qty_normalized, decision.get("conviction", 0.0)
+                        )
 
-                        target_exposure = equity * base_allocation_pct * size_multiplier
+                        if not can_execute:
+                            if "Abortado" in msg:
+                                logger.warning(msg)
+                            else:
+                                logger.info(f"✂️ {symbol} ignorado: {msg}")
+                            continue
 
-                        # Correção: Garante lote mínimo de 100 se exposição > 0
-                        # Se o preço for muito alto e equity baixo, pode dar 0.
-                        # Vamos forçar o cálculo correto de lotes.
-                        if current_price > 0:
-                            raw_qty = target_exposure / current_price
-                        else:
-                            raw_qty = 0
-
-                        final_volume = utils.normalize_volume(symbol, raw_qty)
-
-                        # Se volume ficou 0 mas a decisão é forte e tem capital, tenta lote mínimo
-                        if final_volume == 0 and size_multiplier > 0 and equity > 1000:
+                        # Se volume ficou 0 mas a decisão permite, tenta lote mínimo (Failsafe)
+                        if final_volume == 0 and equity > 1000:
                             min_lot = 100
                             cost = min_lot * current_price
-                            if cost <= equity * 0.95:  # Margem de segurança
+                            if cost <= equity * 0.95:
                                 final_volume = float(min_lot)
-                                logger.info(
-                                    f"⚠️ Volume ajustado para lote mínimo ({final_volume}) em {symbol}"
-                                )
+                                logger.info(f"⚠️ Volume BUY ajustado para lote mínimo ({final_volume}) em {symbol}")
 
                         if final_volume <= 0:
-                            logger.warning(
-                                f"⚠️ Volume calculado para {symbol} inválido ({final_volume}). Ignorando."
-                            )
+                            logger.warning(f"⚠️ Volume calculado para {symbol} inválido ({final_volume}). Ignorando.")
                             continue
 
                         # Cálculo de SL/TP Dinâmico
                         ind = utils.quick_indicators_custom(
                             symbol, mt5.TIMEFRAME_M15, df=candles
                         )
+                        
+                        if ind.get("error"):
+                            logger.warning(f"⚠️ {symbol} abortado por erro nos indicadores: {ind.get('error')}")
+                            continue
+
                         sl, tp = utils.calculate_dynamic_sl_tp(
                             symbol, "BUY", current_price, ind
                         )
@@ -502,76 +467,45 @@ def main():
                             continue
                         # ────────────────────────────────────────────────────────────────────────────
 
-                        # Valida se já tem posição (Hard Block)
-                        open_positions = position_manager.get_open_positions(filter_magic=False)
-                        already_has_sell = False
-                        for p in open_positions:
-                            if p["symbol"] == symbol:
-                                if p["type"] == "BUY":
-                                    logger.info(
-                                        f"🔄 Invertendo mão em {symbol} (BUY -> SELL)"
-                                    )
-                                    execution.close_position(p["ticket"], symbol)
-                                else:
-                                    already_has_sell = True
-                                    break
-                                    
-                        if already_has_sell:
-                            logger.info(f"⏭️ Posição de VENDA já existente em {symbol}. Mantendo. Bloqueando nova ordem.")
-                            continue
-
-                        # Verifica ordens pendentes
-                        pending_exposure = position_manager.get_pending_exposure()
-                        if symbol in pending_exposure and pending_exposure[symbol] > 0:
-                            logger.info(f"⏳ Ordem pendente já existe para {symbol}. Ignorando nova entrada.")
-                            continue
-
-                        # Cálculo de Lote (Mesma lógica)
+                        # --- SMART SIZING & PYRAMIDING (Centralizado no PositionManager) ---
                         base_allocation_pct = config.MAX_CAPITAL_ALLOCATION_PCT
-                        size_multiplier = decision.get("size", 0.0)
+                        target_exposure = equity * base_allocation_pct * decision.get("size", 1.0)
                         
-                        # --- SIZING DINÂMICO POR FAIXA DE CONVICÇÃO ---
-                        conviction_pct = decision.get("conviction", 0.0) * 100
-                        if conviction_pct < 60:
-                            dynamic_multiplier = 0.0
-                        elif conviction_pct < 70:
-                            dynamic_multiplier = 0.25
-                        elif conviction_pct < 85:
-                            dynamic_multiplier = 0.50
-                        else:
-                            dynamic_multiplier = 1.0
-                            
-                        size_multiplier *= dynamic_multiplier
+                        raw_qty = target_exposure / current_price if current_price > 0 else 0
+                        qty_normalized = utils.normalize_volume(symbol, raw_qty)
 
-                        target_exposure = equity * base_allocation_pct * size_multiplier
+                        final_volume, can_execute, msg = position_manager.validate_and_size_order(
+                            symbol, "SELL", qty_normalized, decision.get("conviction", 0.0)
+                        )
 
-                        if current_price > 0:
-                            raw_qty = target_exposure / current_price
-                        else:
-                            raw_qty = 0
+                        if not can_execute:
+                            if "Abortado" in msg:
+                                logger.warning(msg)
+                            else:
+                                logger.info(f"✂️ {symbol} ignorado: {msg}")
+                            continue
 
-                        final_volume = utils.normalize_volume(symbol, raw_qty)
-
-                        # Se volume ficou 0 mas a decisão é forte e tem capital, tenta lote mínimo
-                        if final_volume == 0 and size_multiplier > 0 and equity > 1000:
+                        # Se volume ficou 0 mas a decisão permite, tenta lote mínimo (Failsafe)
+                        if final_volume == 0 and equity > 1000:
                             min_lot = 100
                             cost = min_lot * current_price
                             if cost <= equity * 0.95:
                                 final_volume = float(min_lot)
-                                logger.info(
-                                    f"⚠️ Volume VENDA ajustado para lote mínimo ({final_volume}) em {symbol}"
-                                )
+                                logger.info(f"⚠️ Volume SELL ajustado para lote mínimo ({final_volume}) em {symbol}")
 
                         if final_volume <= 0:
-                            logger.warning(
-                                f"⚠️ Volume calculado para {symbol} inválido ({final_volume}). Ignorando."
-                            )
+                            logger.warning(f"⚠️ Volume calculado para {symbol} inválido ({final_volume}). Ignorando.")
                             continue
 
                         # Cálculo de SL/TP Dinâmico
                         ind = utils.quick_indicators_custom(
                             symbol, mt5.TIMEFRAME_M15, df=candles
                         )
+
+                        if ind.get("error"):
+                            logger.warning(f"⚠️ {symbol} abortado por erro nos indicadores: {ind.get('error')}")
+                            continue
+
                         sl, tp = utils.calculate_dynamic_sl_tp(
                             symbol, "SELL", current_price, ind
                         )
