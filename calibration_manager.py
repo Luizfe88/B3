@@ -24,6 +24,7 @@ class CalibrationManager:
     def __init__(self, file_path=CALIBRATIONS_FILE):
         self.file_path = file_path
         self.calibrations = self.load()
+        self.global_regime = "TREND" # Default inicial
 
     def load(self) -> Dict[str, Any]:
         """Carrega calibrações do disco"""
@@ -137,10 +138,18 @@ class CalibrationManager:
                 with open(ind_file, 'r', encoding='utf-8') as f:
                     ind_data = json.load(f)
                 
+                # NOVO: Determina qual regime usar (Global > Individual)
+                regime = self.global_regime
+                
                 # Se for o novo formato com regimes
-                if "regimes" in ind_data and "current_active" in ind_data:
-                    regime = ind_data["current_active"]
-                    regime_params = ind_data["regimes"].get(regime, {}).get("best_params", {})
+                if "regimes" in ind_data:
+                    # Agora o formato é direto: "regimes": { "TREND": { "ema": 10 ... } }
+                    regime_params = ind_data["regimes"].get(regime, {})
+                    
+                    # Se não tiver o regime específico, tenta o default/inicial do arquivo se existir
+                    if not regime_params:
+                        regime_params = ind_data.get("default", {})
+
                     if regime_params:
                         params.update(regime_params)
                         # Preserva metadados
@@ -154,16 +163,27 @@ class CalibrationManager:
             except Exception as e:
                 logger.error(f"Erro ao ler calibração individual de {symbol}: {e}")
 
-        # 3. Específicos do Símbolo (calibrations.json - Legado/Fallback)
-        symbol_params = self.calibrations.get("symbols", {}).get(symbol, {})
-        # Apenas atualiza se não foi sobrescrevido pelo arquivo individual
-        for k, v in symbol_params.items():
-            if k != "kelly" and k not in params:
-                params[k] = v
+        # 3. Específicos do Símbolo (calibrations.json - Formato Aninhado ou Legado)
+        symbol_entry = self.calibrations.get("symbols", {}).get(symbol, {})
+        
+        # Se o calibrations.json já estiver no formato novo (com 'regimes')
+        if "regimes" in symbol_entry:
+            regime_params_global = symbol_entry["regimes"].get(self.global_regime, {})
+            # Mescla apenas se não foi provido pelo arquivo individual
+            for k, v in regime_params_global.items():
+                if k not in params:
+                    params[k] = v
+            if "verdict" in symbol_entry and "verdict" not in params:
+                params["verdict"] = symbol_entry["verdict"]
+        else:
+            # Fallback para o formato plano legado no calibrations.json
+            for k, v in symbol_entry.items():
+                if k != "kelly" and k not in params:
+                    params[k] = v
         
         # 4. Kelly (se disponível)
-        if "kelly" in symbol_params:
-            params["kelly"] = symbol_params["kelly"]
+        if "kelly" in symbol_entry:
+            params["kelly"] = symbol_entry["kelly"]
         elif os.path.exists(ind_file):
             # Tenta buscar Kelly do individual se não tiver no global
              try:
@@ -192,39 +212,39 @@ class CalibrationManager:
         ]
         return "\n".join(summary)
 
-    def set_basket_params(self, basket_id: int, params: Dict[str, Any]):
-        """Define parâmetros para uma cesta inteira"""
-        basket_key = f"basket_{basket_id}"
-        if "clusters" not in self.calibrations:
-            self.calibrations["clusters"] = {}
-        self.calibrations["clusters"][basket_key] = params
+    def set_global_regime(self, regime: str):
+        """Define o regime global para todos os ativos (Injetado pela Adaptive Intelligence)"""
+        if regime in ["TREND", "SIDEWAYS", "PROTECTION"]:
+            self.global_regime = regime
+            logger.info(f"🌐 CalibrationManager: Regime Global alterado para {regime}")
 
     def update_from_results(self, all_results: Dict[str, Any]):
         """
-        Consolida resultados da otimização no arquivo de calibrações.
+        Consolida resultados da otimização no arquivo de calibrações (Suporta formato aninhado).
         """
         for symbol, result in all_results.items():
-            params = result.get("selected_params") or result.get("best_params")
-            if not params:
-                continue
-                
             if symbol not in self.calibrations["symbols"]:
                 self.calibrations["symbols"][symbol] = {}
             
-            # Atualiza parâmetros (exceto Kelly que é gerido internamente)
-            for k, v in params.items():
-                if k != "kelly":
-                    self.calibrations["symbols"][symbol][k] = v
+            # Se tivermos resultados de multi-regime
+            if "regimes" in result and result["regimes"]:
+                if "regimes" not in self.calibrations["symbols"][symbol]:
+                    self.calibrations["symbols"][symbol]["regimes"] = {}
+                
+                for r_name, r_data in result["regimes"].items():
+                    if "best_params" in r_data:
+                        self.calibrations["symbols"][symbol]["regimes"][r_name] = r_data["best_params"]
             
-            # ✅ NOVO: Salva o timeframe selecionado e veredito
-            if "timeframe" in result:
-                self.calibrations["symbols"][symbol]["timeframe"] = result["timeframe"]
-            
+            # Parâmetros gerais (verdict, timeframe, etc)
             if "verdict" in result:
                 self.calibrations["symbols"][symbol]["verdict"] = result["verdict"]
-                self.calibrations["symbols"][symbol]["last_calib_date"] = datetime.now().strftime("%Y-%m-%d")
             
-            # Agenda atualização do Kelly para este símbolo
+            if "timeframe" in result:
+                self.calibrations["symbols"][symbol]["timeframe"] = result["timeframe"]
+
+            self.calibrations["symbols"][symbol]["last_calib_date"] = datetime.now().strftime("%Y-%m-%d")
+            
+            # Agenda atualização do Kelly
             self.update_symbol_kelly(symbol)
             
         self.save()

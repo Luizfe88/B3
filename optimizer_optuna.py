@@ -1517,8 +1517,6 @@ def optimize_multi_regime(symbol, df_train, n_trials=100, timeout=600, base_slip
     
     for regime in regimes:
         logger.info(f"🧠 {symbol}: Otimizando para regime {regime}...")
-        # Na primeira iteração, deixa o optimize_with_optuna calcular o ML
-        # Nas seguintes, poderíamos passar o ML (se mudarmos a assinatura)
         res = optimize_with_optuna(
             symbol, df_train, 
             n_trials=n_trials, 
@@ -1532,7 +1530,8 @@ def optimize_multi_regime(symbol, df_train, n_trials=100, timeout=600, base_slip
             results["regimes"][regime] = {
                 "best_params": res.get("best_params"),
                 "verdict": res.get("verdict"),
-                "score": res.get("best_score")
+                "score": res.get("best_score"),
+                "metrics": res.get("best_metrics", {})
             }
             if ml_model is None:
                 ml_model = res.get("ml_model")
@@ -1540,11 +1539,54 @@ def optimize_multi_regime(symbol, df_train, n_trials=100, timeout=600, base_slip
             results["regimes"][regime] = {"status": "FAILED", "reason": res.get("reason")}
 
     results["ml_model"] = ml_model
-    # Define um default (TREND) para compatibilidade
-    if "TREND" in results["regimes"] and "best_params" in results["regimes"]["TREND"]:
+    
+    # ✅ ATRIBUIÇÃO DE VEREDITOS REFINADA
+    # TREND_HUNTER: Sharpe > 1.5 em tendência
+    # STABLE_SCALPER: WR > 60% e Sortino > 1.0 em lateral
+    # DEFENSIVE_GUARD: Melhor proteção (Menor DD)
+    
+    final_verdict = "OK"
+    best_overall_score = -999
+    
+    trend_res = results["regimes"].get("TREND", {})
+    side_res = results["regimes"].get("SIDEWAYS", {})
+    prot_res = results["regimes"].get("PROTECTION", {})
+    
+    if trend_res.get("best_params"):
+        m = trend_res.get("metrics", {})
+        if m.get("sharpe", 0) > 1.5:
+            final_verdict = "TREND_HUNTER"
+        elif m.get("profit_factor", 0) > 1.2:
+            final_verdict = "TREND_OK"
+
+    if side_res.get("best_params"):
+        m = side_res.get("metrics", {})
+        if m.get("win_rate", 0) > 0.60 and m.get("sortino", 0) > 1.0:
+            # Se já for TREND_HUNTER, mantém se o score de tendência for maior, 
+            # senão prioriza consistência lateral
+            if final_verdict != "TREND_HUNTER" or side_res.get("score", 0) > trend_res.get("score", 0):
+                final_verdict = "STABLE_SCALPER"
+
+    if prot_res.get("best_params"):
+        m = prot_res.get("metrics", {})
+        # Se o mercado for muito perigoso (DD alto nos outros), o DEFENSIVE_GUARD assume
+        if m.get("max_drawdown", 1.0) < 0.15 and prot_res.get("score", 0) > best_overall_score:
+             t_dd = trend_res.get("metrics", {}).get("max_drawdown", 1.0)
+             if t_dd > 0.40: # Se tendência é muito arriscada
+                 final_verdict = "DEFENSIVE_GUARD"
+
+    results["verdict"] = final_verdict
+    
+    # Define best_params global (Default: TREND se disponível, se não o melhor score)
+    if "TREND" in results["regimes"] and results["regimes"]["TREND"].get("best_params"):
         results["best_params"] = results["regimes"]["TREND"]["best_params"]
-        results["verdict"] = results["regimes"]["TREND"]["verdict"]
     else:
-        results["status"] = "FAILED"
+        # Pega o que tiver melhor score
+        valid_regimes = [r for r in results["regimes"].values() if r.get("best_params")]
+        if valid_regimes:
+            best_r = max(valid_regimes, key=lambda x: x.get("score", -999))
+            results["best_params"] = best_r["best_params"]
+        else:
+            results["status"] = "FAILED"
         
     return results

@@ -32,17 +32,17 @@ timeframes:
 # -- GESTÃO DE RISCO E CAPITAL (KELLY CRITERION) --
 # Regra #3: Kelly Fracionado Inteligente
 kelly_fraction:
-  base: 0.35                  # 35% do Kelly completo como base
+  base: 0.50                  # 50% do Kelly completo como base (Moderado)
   winrate_boost: 0.10         # Bônus se winrate (7d) > 62%
   loss_streak_penalty: -0.15  # Penalidade se loss streak >= 2
-  max_ruin_probability: 0.003 # Máximo 0.3% de chance de ruína no Monte Carlo
+  max_ruin_probability: 0.010 # Máximo 1.0% de chance de ruína no Monte Carlo
 
 # -- LIMITES DE RISCO OPERACIONAL --
 # Regra #1 e #5: Filtros essenciais e limites diários
 risk_limits:
   max_daily_loss_money: 2500.00 # Em BRL
   max_concurrent_positions: 10  # Aumentado para 10 conforme solicitado
-  max_losses_per_symbol_default: 2
+  max_losses_per_symbol_default: 3 # +1 tentativa de reversão
   max_losses_per_symbol_aggressive: 4
   max_capital_allocation_pct: 0.02 # 2% do capital por ativo
   max_sector_allocation_pct: 0.25 # 25% do capital por setor
@@ -50,8 +50,8 @@ risk_limits:
   max_new_positions_per_hour: 10 # Aumentado para 10 (top 10 por ciclo)
   market_regime_filter: True # Ativa filtro de regime de mercado
   max_loss_brl: -300.00 # Travão de Emergência
-  break_even_trigger_brl: 150.00 # Risco Zero
-  profit_activation_threshold_brl: 250.00 # Escudo de Lucro
+  break_even_trigger_brl: 50.00 # Risco Zero muito rápido
+  profit_activation_threshold_brl: 150.00 # Escudo de Lucro moderado
   profit_trailing_percent: 0.25 # Recuo do pico do lucro
 
 # -- FILTROS DE ENTRADA --
@@ -72,7 +72,7 @@ entry_filters:
 # -- MODELO DE MACHINE LEARNING --
 # Regra #2 e #4: Thresholds realistas e configuração do modelo
 ml_model:
-  confidence_base: 0.62       # Threshold mínimo para considerar um sinal
+  confidence_base: 0.60       # Threshold mínimo para considerar um sinal (Moderado)
   dynamic_threshold_max: 0.74 # Teto do threshold dinâmico
   training_days: 90           # Janela de dados para retreinamento diário
 

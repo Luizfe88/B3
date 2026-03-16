@@ -3257,21 +3257,24 @@ def run_optimizer():
             ind_dir = "calibrations_individual"
             os.makedirs(ind_dir, exist_ok=True)
             for sym, res in all_results.items():
-                params = res.get("selected_params") or res.get("best_params")
-                if params:
-                    # Estrutura robusta com suporte a regimes
+                if res.get("status") == "ok":
+                    # Extrai apenas os parâmetros limpos de cada regime para o arquivo individual
+                    clean_regimes = {}
+                    for r_name, r_data in res.get("regimes", {}).items():
+                        if "best_params" in r_data:
+                            clean_regimes[r_name] = r_data["best_params"]
+                    
                     payload = {
-                        "default": params,
-                        "regimes": res.get("regimes", {}),
-                        "current_active": "TREND", # Inicia sempre em TREND por padrão
+                        "symbol": sym,
+                        "verdict": res.get("verdict", "OK"),
                         "timeframe": res.get("timeframe", "M15"),
-                        "verdict": res.get("verdict", "UNKNOWN"),
+                        "regimes": clean_regimes,
                         "updated_at": datetime.now().isoformat()
                     }
                     
                     with open(os.path.join(ind_dir, f"{sym}.json"), "w", encoding="utf-8") as f:
                         json.dump(payload, f, indent=4, ensure_ascii=False)
-            logger.info(f"📂 {len(all_results)} arquivos individuais (MULTI-REGIME) salvos em '{ind_dir}/'")
+            logger.info(f"📂 {len(all_results)} arquivos individuais (Ninho de Regimes) salvos em '{ind_dir}/'")
 
             # ✅ NOVO: Gera Relatório Didático
             generate_didactic_report(all_results)

@@ -14,9 +14,9 @@ DYNAMIC_POSITION_SIZING = {
 
 # A.2 Circuit Breakers
 CIRCUIT_BREAKERS = {
-    "max_consecutive_losses": 3,  # Pausa ao atingir 3 perdas seguidas
+    "max_consecutive_losses": 4,  # Pausa ao atingir 4 perdas seguidas (Moderado)
     "pause_bars_m15": 200,  # Aproximadamente 2 dias em M15
-    "intraday_dd_limit": 0.10,  # Pausa se DD intraday > 10%
+    "intraday_dd_limit": 0.15,  # Pausa se DD intraday > 15% (Permite reversões)
 }
 
 # A.3 RR Assimétrico
@@ -55,7 +55,7 @@ MARKOWITZ_RULES = {
     "sector_cap": 0.25,  # Teto por setor
     "blue_min": 0.50,  # Mínimo Blue Chips
     "opp_max": 0.50,  # Máximo Oportunidades
-    "prefilter_dd_max": 0.65,  # Exclui DD >= 65%
+    "prefilter_dd_max": 0.70,  # Exclui DD >= 70% (Mais maleável p/ ações voláteis)
     "prefilter_trades_min": 10,  # Exclui < 10 trades
     "prefilter_liquidity_min": 10_000_000,  # Liquidez mínima
 }

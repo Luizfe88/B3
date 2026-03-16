@@ -128,8 +128,8 @@ class MLSignalPredictor:
     """
 
     def __init__(
-        self, models_dir: str = "models", confidence_threshold: float = 0.78
-    ):  # Aumentado de 0.70 para 0.78
+        self, models_dir: str = "models", confidence_threshold: float = 0.60
+    ):  # Reduzido para perfil moderado sweet spot
         self.models_dir = Path(models_dir)
         self.models_dir.mkdir(exist_ok=True)
         self.confidence_threshold = confidence_threshold
@@ -470,13 +470,13 @@ class MLSignalPredictor:
     def get_dynamic_threshold(self, symbol: str) -> float:
         """
         Calcula threshold dinâmico baseado em VIX e streak de perdas.
-        Base: 0.65
+        Base: 0.60
         + VIX > 28: +0.12
         + Loss Streak ≥ 2: +0.05
         """
         import utils
 
-        base = 0.65
+        base = 0.60
 
         try:
             vix_br = utils.get_vix_br()
@@ -493,7 +493,7 @@ class MLSignalPredictor:
         except Exception as e:
             logger.error(f"Erro ao calcular dynamic threshold: {e}")
 
-        self.current_threshold = min(0.88, base)
+        self.current_threshold = min(0.78, base)
         return self.current_threshold
 
     def predict(
@@ -586,7 +586,7 @@ class MLSignalPredictor:
 
         threshold = self.base_threshold
         if regime.get("safety_mode", False):
-            threshold = 0.88
+            threshold = 0.78 # Reduzido limitação de segurança para não engessar
         if label in ("BUY", "SELL") and confidence < threshold:
             label = "HOLD"
         else:

@@ -547,10 +547,14 @@ class AdaptiveIntelligence:
 
     def _sync_regime_to_all_assets(self, new_regime: str):
         """
-        Atualiza o campo current_active nos arquivos JSON de calibração individual.
-        Isso faz com que o robô troque o perfil de parâmetros em tempo real.
+        Atualiza o regime global no CalibrationManager e persiste nos arquivos individuais.
         """
         try:
+            # 1. Injeta em tempo real na memória do robô (Fast path)
+            from calibration_manager import calibration_manager
+            calibration_manager.set_global_regime(new_regime)
+
+            # 2. Atualiza o campo current_active nos arquivos JSON de calibração individual (Persistência)
             ind_dir = "calibrations_individual"
             if not os.path.exists(ind_dir):
                 return
@@ -576,8 +580,8 @@ class AdaptiveIntelligence:
                     continue
             
             if updated_count > 0:
-                logger.info(f"🔄 Regime alterado para {new_regime}. {updated_count} ativos atualizados.")
-                # Notifica Telegram de forma robusta
+                logger.info(f"🔄 Sincronização de disco concluída: {updated_count} ativos persistidos no regime {new_regime}.")
+                # Notifica Telegram 
                 try:
                     from telegram_handler import send_telegram_alert
                     if bool(getattr(config, "ENABLE_TELEGRAM_NOTIF", False)):
