@@ -1,4 +1,3 @@
-import os
 import logging
 from datetime import datetime, timedelta
 from threading import Timer
@@ -79,6 +78,15 @@ def _run_once():
     except Exception as e:
         logger.error(f"Erro no relatório CVM: {e}", exc_info=True)
 
+def _run_daily_telegram_bundle():
+    """Executa o bundle de relatórios do Telegram às 17:00"""
+    try:
+        from telegram_handler import send_daily_reports_bundle
+        send_daily_reports_bundle()
+        logger.info("Relatórios diários (17:00) enviados via Telegram")
+    except Exception as e:
+        logger.error(f"Erro ao enviar relatórios diários das 17:00: {e}", exc_info=True)
+
 
 def _seconds_until(hour: int, minute: int = 0) -> float:
     now = datetime.now()
@@ -89,12 +97,27 @@ def _seconds_until(hour: int, minute: int = 0) -> float:
 
 
 def start_cvm_daily_scheduler():
-    delay = _seconds_until(18, 0)
-
-    def _schedule_next():
+    """Inicia os agendamentos diários (17:00 e 18:00)"""
+    
+    # 1. Relatório CVM (Já existente às 18:00)
+    delay_cvm = _seconds_until(18, 0)
+    def _schedule_cvm_next():
         _run_once()
         start_cvm_daily_scheduler()
+    
+    t_cvm = Timer(delay_cvm, _schedule_cvm_next)
+    t_cvm.daemon = True
+    t_cvm.start()
 
-    t = Timer(delay, _schedule_next)
-    t.daemon = True
-    t.start()
+    # 2. Relatórios XP3 (Aprendizado + Didático às 17:00)
+    delay_xp3 = _seconds_until(17, 0)
+    def _schedule_xp3_next():
+        _run_daily_telegram_bundle()
+        # Note: O agendamento recursivo é feito pelo start_cvm_daily_scheduler() que relança ambos
+        pass
+    
+    t_xp3 = Timer(delay_xp3, _schedule_xp3_next)
+    t_xp3.daemon = True
+    t_xp3.start()
+    
+    logger.info("Agendadores diários iniciados: 17:00 (Relatórios XP3) e 18:00 (CVM)")

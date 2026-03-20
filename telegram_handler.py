@@ -313,6 +313,62 @@ def send_daily_learning_report():
     save_learning_report_to_file(msg)
     send_telegram_alert(msg)
 
+def build_didactic_performance_report() -> str:
+    """Constrói o relatório didático de performance com explicações detalhadas"""
+    try:
+        from daily_analysis_logger import daily_logger
+        
+        # Win Rate por Estratégia
+        wr_report = daily_logger.get_strategy_win_rates()
+        
+        # Resumo de Rejeições
+        rej_summary = daily_logger.get_daily_rejection_summary()
+        
+        # Seções didáticas aprimoradas
+        msg = (
+            f"🎓 <b>XP3 PRO - MENTORIA DIÁRIA DA ESTRATÉGIA</b>\n\n"
+            f"Hoje analisei centenas de oportunidades. Aqui está o porquê de termos agido ou esperado:\n\n"
+            f"📊 <b>Desempenho por Estratégia</b>\n"
+            f"<i>Como cada 'mente' do robô se saiu hoje:</i>\n"
+            f"{wr_report}\n\n"
+            f"🚫 <b>Rastreador de Filtros (O que evitamos?)</b>\n"
+            f"<i>Sinais que pareciam bons, mas foram barrados pela segurança:</i>\n"
+            f"{rej_summary}\n\n"
+            f"🧠 <b>EXPLICAÇÃO DIDÁTICA DO DIA:</b>\n\n"
+            f"• <b>Spread Largo:</b> Imagine o spread como um 'pedágio'. Se o pedágio é muito caro em relação à distância que vamos percorrer (o lucro), é melhor não viajar. <i>Filtramos isso para proteger seu capital de custos invisíveis.</i>\n\n"
+            f"• <b>Tendência EMA (Média Móvel):</b> O robô só 'surfa' a favor da maré. Se a maré (tendência de longo prazo) está descendo, não tentamos subir. <i>Isso evita que fiquemos presos contra a força principal do mercado.</i>\n\n"
+            f"• <b>RSI Esticado:</b> Quando o RSI está acima de 70 ou abaixo de 30, o preço está 'cansado' (sobrecomprado ou sobrevendido). Entrar nesse momento é como tentar correr uma maratona quando já se está sem fôlego. <i>Esperamos o preço 'respirar' antes de agir.</i>\n\n"
+            f"• <b>ADX Baixo (Mercado Lateral):</b> Sem tendência, o mercado fica 'batendo cabeça' sem direção. O robô prefere ficar de fora do que ser 'picotado' (chop) por movimentos aleatórios. <i>Buscamos mercados com direção clara.</i>\n\n"
+            f"• <b>Concordância de Timeframes:</b> Só operamos quando o gráfico curto e o longo dizem a mesma coisa. Se houver conflito, o robô entende que o sinal é incerto e prefere a segurança.\n\n"
+            f"✅ <b>Nosso lema:</b> É melhor ganhar pouco com segurança do que arriscar muito por impulsividade."
+        )
+        return msg
+    except Exception as e:
+        logger.error(f"Erro ao construir relatório didático: {e}")
+        return f"❌ Erro ao gerar relatório didático: {str(e)}"
+
+def send_daily_didactic_report():
+    """Envia o relatório didático para o Telegram"""
+    logger.info("Enviando relatório didático para o Telegram...")
+    msg = build_didactic_performance_report()
+    send_telegram_alert(msg)
+
+def send_daily_reports_bundle():
+    """Envia todos os relatórios diários agendados às 17:00"""
+    logger.info("Iniciando envio do combo de relatórios diários (17:00)...")
+    
+    # 1. Relatório de Aprendizado (Pesos)
+    send_daily_learning_report()
+    
+    # Pequeno delay para não atropelar mensagens no Telegram
+    import time
+    time.sleep(2)
+    
+    # 2. Relatório Didático (Performance/Rejeições)
+    send_daily_didactic_report()
+    
+    logger.info("Combo de relatórios diários enviado com sucesso.")
+
 
 def start_telegram_polling():
     """

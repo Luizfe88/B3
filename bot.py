@@ -84,6 +84,10 @@ def main():
     if config.get_config().get("adaptive_intelligence", {}).get("enabled", False):
         adaptive_intelligence.start_monitoring()
 
+    # Inicia os agendadores de relatórios diários (17:00 e 18:00)
+    from daily_logger import start_cvm_daily_scheduler
+    start_cvm_daily_scheduler()
+
     execution = ExecutionEngine()
     if not execution.connect():
         logger.critical(
