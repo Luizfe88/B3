@@ -279,6 +279,14 @@ def main():
                     # Dados Globais de Risco
                     account_info = mt5.account_info()
                     equity = account_info.equity if account_info else 1000.0
+                    
+                    # 🚀 [VIRTUAL WALLET] Sobrescreve equity real por virtual se configurado
+                    import config_risk
+                    if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled"):
+                        virtual_equity = config_risk.HOTFIX_SMALL_ACCOUNT.get("force_virtual_equity")
+                        if virtual_equity:
+                            logger.info(f"📊 [VIRTUAL WALLET] Sobrescrevendo Equity Real (R${equity:.2f}) por Virtual (R${virtual_equity:.2f}) para cálculos.")
+                            equity = virtual_equity
 
                     # Calcula exposições por setor
                     sector_exposure = {}
@@ -443,7 +451,7 @@ def main():
                             current_price,
                             sl,
                             tp,
-                            comment=f"XP3_QUANT_{size_multiplier:.1f}",
+                            comment=f"XP3_QUANT_{decision.get('size', 1.0):.1f}",
                         )
 
                         # ⏱️ FIX RACE CONDITION: Registra ordem pendente e aguarda confirmação no MT5
@@ -536,7 +544,7 @@ def main():
                             current_price,
                             sl,
                             tp,
-                            comment=f"XP3_QUANT_{size_multiplier:.1f}",
+                            comment=f"XP3_QUANT_{decision.get('size', 1.0):.1f}",
                         )
 
                         # ⏱️ FIX RACE CONDITION: Registra ordem pendente e aguarda confirmação no MT5

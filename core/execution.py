@@ -277,6 +277,14 @@ class ExecutionEngine:
         with self._lock:
             return mt5.symbol_info(symbol)
 
+    def get_account_info(self):
+        """Retorna informações da conta logada no MT5."""
+        if not self.is_connected():
+            if not self.connect():
+                return None
+        with self._lock:
+            return mt5.account_info()
+
     # ========================
     # 🌐 OPTIMAL EXECUTION (Pilar 3)
     # ========================

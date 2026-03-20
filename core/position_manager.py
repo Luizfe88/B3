@@ -362,6 +362,12 @@ class PositionManager:
         account_info = self.execution.get_account_info()
         equity = account_info.equity if account_info else 1001.0
         
+        # 🚀 [VIRTUAL WALLET] Sobrescreve equity real por virtual se configurado
+        if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled"):
+            virtual_equity = config_risk.HOTFIX_SMALL_ACCOUNT.get("force_virtual_equity")
+            if virtual_equity:
+                equity = virtual_equity
+
         if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled") and equity < config_risk.HOTFIX_SMALL_ACCOUNT["fixed_lot_equity_threshold"]:
             if not self._is_future(symbol):
                 final_volume = float(config_risk.HOTFIX_SMALL_ACCOUNT["fixed_lot_size"])

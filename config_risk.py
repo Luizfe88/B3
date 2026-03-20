@@ -77,5 +77,6 @@ HOTFIX_SMALL_ACCOUNT = {
     "profit_shield_trailing_pct": 0.25, # Protege 75% (recuo de 25%)
     "min_conviction_threshold": 75,      # Em percentual (0-100)
     "fixed_lot_size": 100,
-    "fixed_lot_equity_threshold": 1000.0
+    "fixed_lot_equity_threshold": 1000.0,
+    "force_virtual_equity": 500.0       # Sobrescreve o equity real para fins de sizing
 }
