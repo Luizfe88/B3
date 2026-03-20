@@ -30,6 +30,7 @@ class RiskyTrader(Trader):
                 "size_multiplier": 1.0,
                 "stop_loss_pct": stop_loss,
                 "probability": analysis.get("technical", {}).get("score", 0.5),
+                "fundamental_score": analysis.get("fundamental", {}).get("score", 0.5),
             }
 
         if consensus == 'BEARISH':
@@ -39,6 +40,7 @@ class RiskyTrader(Trader):
                 "size_multiplier": 1.0,
                 "stop_loss_pct": stop_loss,
                 "probability": analysis.get("technical", {}).get("score", 0.5),
+                "fundamental_score": analysis.get("fundamental", {}).get("score", 0.5),
             }
 
         return {"action": "HOLD", "reason": "Dados insuficientes ou consenso neutro"}
@@ -71,6 +73,7 @@ class NeutralTrader(Trader):
                 "size_multiplier": 0.9,
                 "stop_loss_pct": stop_loss,
                 "probability": tech.get("score", 0.5),
+                "fundamental_score": fund.get("score", 0.5),
             }
 
         # ── Caminho 2: Macro+Flow Trade (sem depender do ML) ──
@@ -87,6 +90,7 @@ class NeutralTrader(Trader):
                 "size_multiplier": 0.7,
                 "stop_loss_pct": stop_loss * 0.8, # Reduz stop em Macro-flow
                 "probability": tech.get("score", 0.5),
+                "fundamental_score": fund.get("score", 0.5),
             }
 
         # ── Caminho SELL: Consenso BEARISH ──
@@ -97,6 +101,7 @@ class NeutralTrader(Trader):
                 "size_multiplier": 0.9,
                 "stop_loss_pct": stop_loss,
                 "probability": tech.get("score", 0.5),
+                "fundamental_score": fund.get("score", 0.5),
             }
 
         return {"action": "HOLD", "reason": "Dados insuficientes ou cenário neutro"}
@@ -131,6 +136,7 @@ class SafeTrader(Trader):
                 "size_multiplier": 0.7,
                 "stop_loss_pct": stop_loss,
                 "probability": tech.get("score", 0.5),
+                "fundamental_score": fund.get("score", 0.5),
             }
 
         # ── Caminho 2: IBOV bull + sentiment forte + sem pressão vendedora ──
@@ -144,6 +150,7 @@ class SafeTrader(Trader):
                 "size_multiplier": 0.6,
                 "stop_loss_pct": stop_loss,
                 "probability": tech.get("score", 0.5),
+                "fundamental_score": fund.get("score", 0.5),
             }
 
         # ── SELL: tudo alinhado bearish ──
@@ -156,6 +163,7 @@ class SafeTrader(Trader):
                 "size_multiplier": 0.7,
                 "stop_loss_pct": stop_loss * 0.75, # Mais apertado em Sell Seguro
                 "probability": tech.get("score", 0.5),
+                "fundamental_score": fund.get("score", 0.5),
             }
 
         return {"action": "HOLD", "reason": "Dados insuficientes ou cenário neutro"}

@@ -67,3 +67,15 @@ SANITY_CHECKS = {
     "min_calmar_stress": -0.20,
     "min_ratio_vs_buyhold": 0.50,
 }
+
+# J. Hotfix Small Account (R$ 500) - Teste de Estresse
+HOTFIX_SMALL_ACCOUNT = {
+    "enabled": True,
+    "max_daily_loss_brl": 25.00,
+    "break_even_trigger_brl": 10.00,
+    "profit_shield_activation_brl": 40.00,
+    "profit_shield_trailing_pct": 0.25, # Protege 75% (recuo de 25%)
+    "min_conviction_threshold": 75,      # Em percentual (0-100)
+    "fixed_lot_size": 100,
+    "fixed_lot_equity_threshold": 1000.0
+}

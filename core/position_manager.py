@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from .execution import ExecutionEngine, OrderParams, OrderSide
 import utils
 import config
+import config_risk
 
 logger = logging.getLogger("PositionManager")
 
@@ -255,7 +256,9 @@ class PositionManager:
             active_tickets.add(ticket)
 
             # 1. Hard Dollar Stop (Travão de Emergência)
-            if profit <= getattr(config, "MAX_LOSS_BRL", -300.00):
+            max_loss_limit = config_risk.HOTFIX_SMALL_ACCOUNT["max_daily_loss_brl"] if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled") else getattr(config, "MAX_LOSS_BRL", -300.00)
+            
+            if profit <= -abs(max_loss_limit):
                 logger.error(f"🚨 [EMERGENCY EXIT] {symbol} (Ticket: {ticket}) atingiu prejuízo máximo de R${profit:.2f}. Fechando!")
                 self.execution.close_position(ticket, symbol)
                 continue
@@ -267,8 +270,12 @@ class PositionManager:
                 current_max_profit = profit
 
             # 2. Escudo de Lucro Dinâmico (High-Water Mark Trailing)
-            activation_threshold = getattr(config, "PROFIT_ACTIVATION_THRESHOLD_BRL", 250.00)
-            trailing_percent = getattr(config, "PROFIT_TRAILING_PERCENT", 0.25)
+            if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled"):
+                activation_threshold = config_risk.HOTFIX_SMALL_ACCOUNT["profit_shield_activation_brl"]
+                trailing_percent = config_risk.HOTFIX_SMALL_ACCOUNT["profit_shield_trailing_pct"]
+            else:
+                activation_threshold = getattr(config, "PROFIT_ACTIVATION_THRESHOLD_BRL", 250.00)
+                trailing_percent = getattr(config, "PROFIT_TRAILING_PERCENT", 0.25)
 
             if current_max_profit >= activation_threshold:
                 # Se recuou o percentual configurado do pico
@@ -281,7 +288,10 @@ class PositionManager:
                     continue
 
             # 3. Auto Break-Even (Risco Zero Real)
-            be_threshold = getattr(config, "BREAK_EVEN_TRIGGER_BRL", 150.00)
+            if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled"):
+                be_threshold = config_risk.HOTFIX_SMALL_ACCOUNT["break_even_trigger_brl"]
+            else:
+                be_threshold = getattr(config, "BREAK_EVEN_TRIGGER_BRL", 150.00)
             if current_max_profit >= be_threshold:
                 # Calcula breakeven_price considerando o custo do slippage
                 slippage = getattr(config, "SLIPPAGE_BRL", 0.02)
@@ -329,8 +339,14 @@ class PositionManager:
         """
         # --- 1. SIZING DINÂMICO POR CONVICÇÃO ---
         conviction_pct = conviction * 100
-        if conviction_pct < 60:
-            return 0.0, False, f"Conviccao insuficiente ({conviction_pct:.1f}%)"
+        
+        # Filtro de Convicção Elevado para Small Account
+        min_conviction = getattr(config, "CONVICTION_THRESHOLD", 60)
+        if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled"):
+            min_conviction = config_risk.HOTFIX_SMALL_ACCOUNT["min_conviction_threshold"]
+            
+        if conviction_pct < min_conviction:
+            return 0.0, False, f"Conviccao insuficiente ({conviction_pct:.1f}% < {min_conviction}%)"
         
         if conviction_pct < 70:
             dynamic_multiplier = 0.25  # Entrada Tatica
@@ -341,6 +357,16 @@ class PositionManager:
         else:
             dynamic_multiplier = 1.00  # Conviccao Maxima
             label = "Extrema"
+
+        # --- TRAVA DE LOTE FIXO PARA SMALL ACCOUNT ---
+        account_info = self.execution.get_account_info()
+        equity = account_info.equity if account_info else 1001.0
+        
+        if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled") and equity < config_risk.HOTFIX_SMALL_ACCOUNT["fixed_lot_equity_threshold"]:
+            if not self._is_future(symbol):
+                final_volume = float(config_risk.HOTFIX_SMALL_ACCOUNT["fixed_lot_size"])
+                logger.info(f"🔒 [FIXED LOT] Small Account Equity (R${equity:.2f}) < threshold. Forçando lote {final_volume} e ignorando Kelly.")
+                return final_volume, True, f"OK (Fixed Lot {label})"
 
         final_volume = base_volume * dynamic_multiplier
         # Garantir volume mínimo (normalize_volume deve ser chamado fora ou aqui)

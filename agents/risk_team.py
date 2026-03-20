@@ -5,6 +5,7 @@ logger = logging.getLogger("RiskManagementTeam")
 
 import config
 import pandas as pd
+import database
 from validation.permutation_test import PermutationValidator
 from calibration_manager import calibration_manager
 
@@ -55,9 +56,20 @@ class RiskGuardian:
             calib = calibration_manager.get_calibrated_params(symbol)
             kelly_data = calib.get("kelly", {})
             
-            p = float(kelly_data.get("win_rate", proposal.get("probability", 0.55)))
+            # p = probabilidade de acerto
+            p_default = float(kelly_data.get("win_rate", proposal.get("probability", 0.55)))
+            
             # b = proporção de ganho/perda (ratio avg_win/avg_loss)
-            b = float(kelly_data.get("avg_win", 0.015) / kelly_data.get("avg_loss", 0.012)) if kelly_data.get("avg_loss", 0.012) > 0 else 2.0
+            # RECALIBRAÇÃO: Busca estatísticas reais do símbolo no banco de dados
+            db_stats = database.get_symbol_statistics(symbol)
+            if db_stats.get("total_trades", 0) >= 10:
+                p = float(db_stats.get("win_rate", p_default))
+                b = float(db_stats.get("avg_rr", 1.25))
+                logger.info(f"📈 [{self.name}] Usando estatísticas REAIS para {symbol}: p={p:.2%}, b={b:.2f}")
+            else:
+                p = p_default
+                b = float(kelly_data.get("avg_win", 0.015) / kelly_data.get("avg_loss", 0.012)) if kelly_data.get("avg_loss", 0.012) > 0 else 1.25
+                logger.info(f"⚠️ [{self.name}] Histórico insuficiente para {symbol} (<10 trades). Usando fallback b={b:.2f}")
             
             kelly_size = self.calculate_kelly_size(p, b)
             if kelly_size > 0:
@@ -84,7 +96,8 @@ class RiskGuardian:
         effective_risk_pct = base_risk_pct * proposed_size_multiplier
 
         # HARD LIMIT absoluto por trade (configurável via config.HARD_RISK_LIMIT_PCT)
-        HARD_LIMIT = float(getattr(config, "HARD_RISK_LIMIT_PCT", 0.05))
+        # BUG FIX: HARD_LIMIT deve ser consistente com MAX_EXPOSURE_PCT (10%)
+        HARD_LIMIT = float(getattr(config, "HARD_RISK_LIMIT_PCT", 0.10))
         if effective_risk_pct > HARD_LIMIT:
             logger.critical(
                 f"🚨 [{self.name}] Hard risk limit exceeded: {effective_risk_pct:.2%} > {HARD_LIMIT:.2%}. Bloqueando proposta."
@@ -92,7 +105,9 @@ class RiskGuardian:
             return {"approved": False, "reason": "Hard risk limit exceeded"}
 
         # Limite prudencial (ajuste automático) — não ultrapassa 150% do risco base
-        max_effective_risk = base_risk_pct * 1.5
+        # EXCEÇÃO: Se for Kelly Adjusted, permitimos até o HARD_LIMIT (10%)
+        max_effective_risk = HARD_LIMIT if proposal.get("kelly_adjusted") else (base_risk_pct * 1.5)
+        
         if effective_risk_pct > max_effective_risk:
             logger.warning(
                 f"❌ [{self.name}] Risco efetivo alto ({effective_risk_pct:.2%} > {max_effective_risk:.2%}). Ajustando para prudência."
@@ -140,10 +155,17 @@ class RiskGuardian:
         if config.MARKET_REGIME_FILTER:
             ibov_trend = market_context.get("ibov_trend", "neutral")
             if ibov_trend == "bearish_extreme" and proposal.get("action") == "BUY":
-                logger.warning(
-                    f"⚠️ [{self.name}] Market Regime Guard: Bloqueando COMPRA em pânico."
-                )
-                return {"approved": False, "reason": "Market Panic Mode"}
+                # EXCEÇÃO: Sinais de extrema confiança (ML >= 95% + Fundamentos sólidos)
+                ml_conf = proposal.get("probability", 0.0)
+                fund_score = proposal.get("fundamental_score", 0.5) # ResearcherTeam deve passar isso
+                
+                if ml_conf >= 0.95 and fund_score >= 0.75:
+                    logger.info(f"💎 [{self.name}] MARKET REGIME EXCEPTION: {symbol} aprovado em pânico por ML {ml_conf:.1%} e FUND {fund_score:.2f}")
+                else:
+                    logger.warning(
+                        f"⚠️ [{self.name}] Market Regime Guard: Bloqueando COMPRA em pânico."
+                    )
+                    return {"approved": False, "reason": "Market Panic Mode"}
 
         # 4. Verificação de correlação com IBOV
         corr = market_context.get("ibov_correlation", 0.5)

@@ -54,13 +54,16 @@ class ResearcherTeam:
         if tech_trend == 'bullish':
             self.bull_thesis.append(f"Tendência técnica alta (conf:{tech_confidence:.0%})")
             bull_score += tech_contrib
+            # BÔNUS DE CONVICÇÃO EXTREMA (ML >= 95%)
+            if tech_confidence >= 0.95:
+                self.bull_thesis.append("Bônus: Convicção ML extrema (>=95%)")
+                bull_score += 0.5
         elif tech_trend == 'bearish':
             self.bear_thesis.append(f"Tendência técnica baixa (conf:{tech_confidence:.0%})")
             bear_score += tech_contrib
 
         # ── 2. FUNDAMENTAL: peso 1.0 (bars=0 agora retorna 'neutral' → sem penalidade) ──
         fund_val   = fund.get('valuation', 'neutral')
-        fund_score = float(fund.get('score', 0.5))
         if fund_val == 'cheap':
             self.bull_thesis.append("Métricas MT5 favoráveis (liquidez/volatilidade)")
             bull_score += 1.0
@@ -79,7 +82,7 @@ class ResearcherTeam:
             bull_score += 1.0   # aumentado de 0.75 → 1.0
         elif sent_val == 'pessimistic':
             self.bear_thesis.append(f"Sentimento IBOV negativo (score:{sent_score:.2f})")
-            bear_score += 1.0
+            bear_score += 0.6   # reduzido de 1.0 → 0.6 para evitar bloqueio total
             
         # ── 4. ORDER FLOW: peso 1.2 (era 1.0) ────────────────────────────────
         of_pressure  = of.get('pressure', 'neutral')

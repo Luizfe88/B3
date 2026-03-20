@@ -7,10 +7,11 @@ import logging
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 from collections import deque
 import json
+import os
 import threading
 import time
 
@@ -266,13 +267,14 @@ class AdaptiveIntelligence:
             # Não aborta mais aqui para podermos pegar os dados de mercado mesmo sem trades.
 
             # Calcula métricas de performance
-            winrate_1h = self._calculate_winrate(recent_trades, hours=1) if len(recent_trades) > 0 else 0.0
-            winrate_4h = self._calculate_winrate(recent_trades, hours=4) if len(recent_trades) > 0 else 0.0
-            winrate_24h = self._calculate_winrate(recent_trades, hours=24) if len(recent_trades) > 0 else 0.0
+            # Usamos 0.5 (50%) como base neutra se não houver trades, para evitar "death spiral" de parâmetros drásticos
+            winrate_1h = self._calculate_winrate(recent_trades, hours=1) if len(recent_trades) > 0 else 0.5
+            winrate_4h = self._calculate_winrate(recent_trades, hours=4) if len(recent_trades) > 0 else 0.5
+            winrate_24h = self._calculate_winrate(recent_trades, hours=24) if len(recent_trades) > 0 else 0.5
 
-            sharpe_1h = self._calculate_sharpe(recent_trades, hours=1)
-            sharpe_4h = self._calculate_sharpe(recent_trades, hours=4)
-            sharpe_24h = self._calculate_sharpe(recent_trades, hours=24)
+            sharpe_1h = self._calculate_sharpe(recent_trades, hours=1) if len(recent_trades) > 0 else 1.0
+            sharpe_4h = self._calculate_sharpe(recent_trades, hours=4) if len(recent_trades) > 0 else 1.0
+            sharpe_24h = self._calculate_sharpe(recent_trades, hours=24) if len(recent_trades) > 0 else 1.0
 
             # Análise de trade duration
             durations = [t.get("duration_minutes", 0) for t in recent_trades[-50:]]
@@ -410,7 +412,7 @@ class AdaptiveIntelligence:
                 3.0  # Clamp SL to max 3% for stock trades
             )
             logger.info(f"📊 Anomalia de volume: {volume_anomaly:.1f}x")
-            logger.info(f"🔒 Clamping SL to max 3% due to volume anomaly")
+            logger.info("🔒 Clamping SL to max 3% due to volume anomaly")
 
         return recommendations
 
@@ -483,7 +485,7 @@ class AdaptiveIntelligence:
                 }
             )
 
-            logger.info(f"🎯 Parâmetros ajustados:")
+            logger.info("🎯 Parâmetros ajustados:")
             logger.info(
                 f"   Confidence: {old_params.ml_confidence_threshold:.3f} → {new_params.ml_confidence_threshold:.3f}"
             )
@@ -658,7 +660,8 @@ class AdaptiveIntelligence:
             ]
 
             if len(recent_trades) < 3:
-                return 0.0
+                # Retorna 1.0 (neutro) se não houver trades suficientes para calcular Sharpe real
+                return 1.0
 
             pnls = [float(t.get("pnl_money", 0)) for t in recent_trades]
             returns = np.array(pnls)
@@ -698,7 +701,7 @@ class AdaptiveIntelligence:
                 try:
                     current_vol = utils.get_current_volume_ratio(symbol)
                     anomalies.append(current_vol)
-                except:
+                except Exception:
                     continue
 
             return max(anomalies) if anomalies else 1.0
@@ -719,7 +722,7 @@ class AdaptiveIntelligence:
                     try:
                         corr = utils.get_correlation(sym1, sym2, period=60)
                         correlations.append(abs(corr))
-                    except:
+                    except Exception:
                         continue
 
             return np.mean(correlations) if correlations else 0.5
@@ -790,13 +793,13 @@ class AdaptiveIntelligence:
             ]
 
             if df.empty:
-                avg_winrate = 0.0
-                avg_sharpe = 0.0
-                avg_vol = 0.0
+                avg_winrate = 0.5
+                avg_sharpe = 1.0
+                avg_vol = 0.02
                 wr_trend = "Aguardando trades"
                 vol_level = "Aguardando"
                 corr_level = "Aguardando"
-                tr_strength = 0.0
+                tr_strength = 0.5
             else:
                 avg_winrate = df["winrate_24h"].mean()
                 avg_sharpe = df["sharpe_4h"].mean()
