@@ -1,5 +1,3 @@
-# watchdog.py - Watchdog robusto com NOVA JANELA VISÍVEL para o bot
-
 import psutil
 import subprocess
 import time
@@ -7,11 +5,10 @@ import os
 import datetime
 import platform
 import MetaTrader5 as mt5
-from pathlib import Path
-import psutil
 
 # ==================== CONFIGURAÇÕES ====================
 BOT_SCRIPT = "bot.py"  # Nome do seu script principal
+SUPERVISOR_SCRIPT = "run_supervisor.py"  # Agendador de IA
 LOG_FILE = "xp3_bot.log"  # Arquivo de log do bot
 MAX_INACTIVITY_SECONDS = 180  # 3 minutos sem log = suspeito
 CHECK_INTERVAL = 30  # Verifica a cada 30s
@@ -19,21 +16,29 @@ MT5_TIMEOUT_SECONDS = 10  # Timeout para testar MT5
 # ======================================================
 
 
-def is_bot_running():
-    """Verifica se o processo do bot.py está ativo (exclui o watchdog)"""
+def is_script_running(script_name):
+    """Verifica se um script python específico está ativo"""
     for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
             if proc.info["cmdline"]:
                 cmd = " ".join(proc.info["cmdline"])
                 if (
                     "python" in proc.info["name"].lower()
-                    and BOT_SCRIPT in cmd
-                    and "watchdog.py" not in cmd
+                    and script_name in cmd
+                    and "botwatchdog.py" not in cmd
                 ):
                     return proc.pid
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
     return None
+
+
+def is_bot_running():
+    return is_script_running(BOT_SCRIPT)
+
+
+def is_supervisor_running():
+    return is_script_running(SUPERVISOR_SCRIPT)
 
 
 def get_log_last_modified():
@@ -50,7 +55,7 @@ def is_mt5_connected():
             )
             mt5.shutdown()
             return connected
-    except:
+    except Exception:
         return False
     return False
 
@@ -59,105 +64,85 @@ def kill_bot(pid):
     try:
         proc = psutil.Process(pid)
         proc.kill()
-        print(f"[{datetime.datetime.now()}] ⚡ Bot morto (PID {pid})")
-    except:
+        print(f"[{datetime.datetime.now()}] ⚡ Processo morto (PID {pid})")
+    except Exception:
         pass
 
 
-def start_bot_in_new_window():
-    """Inicia o bot em uma NOVA JANELA DE TERMINAL visível"""
+def start_script_in_new_window(script_name):
+    """Inicia um script em uma NOVA JANELA DE TERMINAL visível"""
     system = platform.system()
-
-    print(
-        f"[{datetime.datetime.now()}] 🚀 Reiniciando bot em NOVA JANELA ({system})..."
-    )
+    print(f"[{datetime.datetime.now()}] 🚀 Iniciando {script_name} em NOVA JANELA ({system})...")
 
     if system == "Windows":
-        # Abre nova janela CMD e executa o bot
-        subprocess.Popen(
-            ["cmd.exe", "/c", "start", "cmd.exe", "/k", "python", BOT_SCRIPT]
-        )
-
+        subprocess.Popen(["cmd.exe", "/c", "start", "cmd.exe", "/k", "python", script_name])
     elif system == "Linux":
-        # Tenta vários terminais comuns (gnome, xfce, kde, etc.)
         terminals = [
-            ["gnome-terminal", "--", "python3", BOT_SCRIPT],
-            ["konsole", "-e", "python3", BOT_SCRIPT],
-            ["xfce4-terminal", "-e", f"python3 {BOT_SCRIPT}"],
-            ["xterm", "-e", f"python3 {BOT_SCRIPT}"],
-            ["lxterminal", "-e", f"python3 {BOT_SCRIPT}"],
+            ["gnome-terminal", "--", "python3", script_name],
+            ["konsole", "-e", "python3", script_name],
+            ["xfce4-terminal", "-e", f"python3 {script_name}"],
+            ["xterm", "-e", f"python3 {script_name}"],
         ]
         for term_cmd in terminals:
             try:
                 subprocess.Popen(term_cmd)
-                return  # Sucesso → sai
+                return
             except FileNotFoundError:
                 continue
-        print("⚠️ Nenhum terminal encontrado! Instale gnome-terminal ou similar.")
-
     elif system == "Darwin":  # macOS
-        subprocess.Popen(
-            [
-                "osascript",
-                "-e",
-                f'tell app "Terminal" to do script "python3 {BOT_SCRIPT}"',
-            ]
-        )
+        subprocess.Popen(["osascript", "-e", f'tell app "Terminal" to do script "python3 {script_name}"'])
     else:
-        print("⚠️ Sistema operacional não suportado para nova janela.")
+        print(f"⚠️ Sistema operacional {system} não suportado para nova janela.")
 
 
 def main():
-    print(
-        f"[{datetime.datetime.now()}] 🐶 Watchdog iniciado - Monitorando {BOT_SCRIPT}"
-    )
-    print("   → Ao detectar problema, abrirá NOVA JANELA com o painel do bot")
+    print(f"[{datetime.datetime.now()}] 🐶 Watchdog iniciado")
+    print(f"   → Monitorando Bot: {BOT_SCRIPT}")
+    print(f"   → Monitorando Supervisor: {SUPERVISOR_SCRIPT}")
 
     last_log_time = get_log_last_modified()
 
     while True:
-        time.sleep(CHECK_INTERVAL)
         current_time = datetime.datetime.now()
-        pid = is_bot_running()
+        
+        # 1. VERIFICA O BOT PRINCIPAL
+        bot_pid = is_bot_running()
+        if bot_pid is None:
+            print(f"[{current_time}] ❌ Bot parado → Abrindo...")
+            start_script_in_new_window(BOT_SCRIPT)
+            time.sleep(5)
+        
+        # 2. VERIFICA O SUPERVISOR (NOVIDADE)
+        sup_pid = is_supervisor_running()
+        if sup_pid is None:
+            print(f"[{current_time}] ❌ Supervisor parado → Abrindo...")
+            start_script_in_new_window(SUPERVISOR_SCRIPT)
+            time.sleep(5)
 
-        # 1. Bot não está rodando → inicia em nova janela
-        if pid is None:
-            print(f"[{current_time}] ❌ Bot parado → Abrindo nova janela...")
-            start_bot_in_new_window()
-            time.sleep(15)  # Dá tempo para o bot iniciar
-            last_log_time = get_log_last_modified()
-            continue
+        # 3. VERIFICA SAÚDE DO BOT (FREEZE E CONEXÃO)
+        bot_pid = is_bot_running() # Re-checa o PID após possível reinício
+        if bot_pid:
+            # Check log freeze
+            current_log_time = get_log_last_modified()
+            if (current_log_time and last_log_time and 
+                (current_log_time - last_log_time) > MAX_INACTIVITY_SECONDS):
+                print(f"[{current_time}] ⏰ Bot Freeze detectado → Reiniciando")
+                kill_bot(bot_pid)
+                start_script_in_new_window(BOT_SCRIPT)
+                time.sleep(10)
+                current_log_time = get_log_last_modified()
+            
+            # Check MT5 connection
+            if not is_mt5_connected():
+                print(f"[{current_time}] 📡 MT5 desconectado → Reiniciando Bot")
+                kill_bot(bot_pid)
+                start_script_in_new_window(BOT_SCRIPT)
+                time.sleep(10)
+                current_log_time = get_log_last_modified()
 
-        # 2. Log parado há muito tempo (freeze)
-        current_log_time = get_log_last_modified()
-        if (
-            current_log_time
-            and last_log_time
-            and (current_log_time - last_log_time) > MAX_INACTIVITY_SECONDS
-        ):
-            print(
-                f"[{current_time}] ⏰ Freeze detectado ({current_log_time - last_log_time:.0f}s sem log) → Reiniciando"
-            )
-            kill_bot(pid)
-            start_bot_in_new_window()
-            time.sleep(15)
-            last_log_time = get_log_last_modified()
-            continue
-
-        # 3. MT5 não responde
-        if not is_mt5_connected():
-            print(f"[{current_time}] 📡 MT5 sem resposta → Reiniciando")
-            kill_bot(pid)
-            start_bot_in_new_window()
-            time.sleep(20)
-            last_log_time = get_log_last_modified()
-            continue
-
-        # Tudo ok
-        if current_log_time != last_log_time:
             last_log_time = current_log_time
 
-        print(f"[{current_time}] ✅ Bot rodando normalmente (PID {pid})")
+        time.sleep(CHECK_INTERVAL)
 
 
 if __name__ == "__main__":

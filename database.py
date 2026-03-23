@@ -310,6 +310,25 @@ def get_trades_by_date(target_date_str: str):
     return df
 
 
+def get_cumulative_pnl(since_date="2026-03-20"):
+    """
+    Calcula o PnL total acumulado desde uma data específica.
+    Padrão: 2026-03-20 (Início do experimento de Wallet Virtual)
+    """
+    init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        query = "SELECT SUM(pnl_money) as total_pnl FROM trades WHERE exit_price IS NOT NULL AND date(timestamp) >= date(?)"
+        df = pd.read_sql_query(query, conn, params=(since_date,))
+        total_pnl = float(df["total_pnl"].iloc[0] or 0.0)
+        return total_pnl
+    except Exception as e:
+        logger.error(f"Erro ao calcular PnL acumulado: {e}")
+        return 0.0
+    finally:
+        conn.close()
+
+
 def get_win_rate_report(lookback_days: int = 30) -> dict:
     """
     Gera relatório de win rate geral e por estratégia.

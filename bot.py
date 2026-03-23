@@ -280,13 +280,16 @@ def main():
                     account_info = mt5.account_info()
                     equity = account_info.equity if account_info else 1000.0
                     
-                    # 🚀 [VIRTUAL WALLET] Sobrescreve equity real por virtual se configurado
+                    # 🚀 [VIRTUAL WALLET] Dinâmico e Progressivo
                     import config_risk
                     if getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled"):
-                        virtual_equity = config_risk.HOTFIX_SMALL_ACCOUNT.get("force_virtual_equity")
-                        if virtual_equity:
-                            logger.info(f"📊 [VIRTUAL WALLET] Sobrescrevendo Equity Real (R${equity:.2f}) por Virtual (R${virtual_equity:.2f}) para cálculos.")
-                            equity = virtual_equity
+                        # Inicia em 2000 e soma o PnL acumulado do banco de dados
+                        import database
+                        initial_v_equity = config_risk.HOTFIX_SMALL_ACCOUNT.get("force_virtual_equity", 2000.0)
+                        cumulative_pnl = database.get_cumulative_pnl()
+                        equity = initial_v_equity + cumulative_pnl
+                        
+                        logger.info(f"📊 [VIRTUAL WALLET] Saldo Atualizado: R${equity:.2f} (Início: R${initial_v_equity:.2f} + PnL: R${cumulative_pnl:.2f})")
 
                     # Calcula exposições por setor
                     sector_exposure = {}
