@@ -68,15 +68,15 @@ SANITY_CHECKS = {
     "min_ratio_vs_buyhold": 0.50,
 }
 
-# J. Hotfix Small Account (R$ 500) - Teste de Estresse
+# J. Hotfix Small Account (R$ 2000) - Teste de Estresse
 HOTFIX_SMALL_ACCOUNT = {
     "enabled": True,
-    "max_daily_loss_brl": 25.00,
-    "break_even_trigger_brl": 10.00,
-    "profit_shield_activation_brl": 40.00,
+    "max_daily_loss_brl": 100.00,
+    "break_even_trigger_brl": 40.00,
+    "profit_shield_activation_brl": 160.00,
     "profit_shield_trailing_pct": 0.25, # Protege 75% (recuo de 25%)
     "min_conviction_threshold": 75,      # Em percentual (0-100)
     "fixed_lot_size": 100,
-    "fixed_lot_equity_threshold": 1000.0,
-    "force_virtual_equity": 500.0       # Sobrescreve o equity real para fins de sizing
+    "fixed_lot_equity_threshold": 2500.0,
+    "force_virtual_equity": 2000.0       # Sobrescreve o equity real para fins de sizing
 }

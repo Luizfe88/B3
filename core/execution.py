@@ -4,9 +4,9 @@ import time
 import threading
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+
 from typing import Optional, Dict, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from enum import Enum
 
 logger = logging.getLogger("ExecutionEngine")
@@ -320,7 +320,15 @@ class ExecutionEngine:
         def _task():
             try:
                 logger.info(f"🚀 [ASYNC SLICE] Iniciando execução {symbol} | Total: {total_volume} | Duração: {duration_min}m")
-                slices_count = max(1, duration_min)
+                # Garante que cada fatia respeite o volume_min do ativo
+                info = mt5.symbol_info(symbol)
+                min_lot = info.volume_min if info else 100.0
+                
+                # RECALCULA SLICES: Se o volume total dividido pela duração for menor que o min_lot,
+                # reduzimos o número de fatias para manter lotes válidos.
+                slices_count = max(1, int(total_volume // min_lot))
+                slices_count = min(slices_count, max(1, duration_min))
+                
                 interval = 60 # 1 minuto entre fatias
                 slice_vol = total_volume / slices_count
                 
@@ -331,7 +339,8 @@ class ExecutionEngine:
                     
                     import utils
                     norm_vol = utils.normalize_volume(symbol, slice_vol)
-                    if norm_vol <= 0: continue
+                    if norm_vol <= 0:
+                        continue
                     
                     # Refresh de cotação para garantir preço justo em cada fatia
                     tick = mt5.symbol_info_tick(symbol)
@@ -374,18 +383,36 @@ class ExecutionEngine:
             
             # --- SLIPPAGE GUARD: Aborta se o volume for extremo (10x o volume seguro) ---
             extreme_liquidity_threshold = safe_volume_limit * 10
+            
+            # 🛡️ [SMALL ACCOUNT PARADOX FIX] Se estivermos em modo Small Account com lote fixo,
+            # permitimos que o lote mínimo (ex: 100) passe mesmo que a liquidez de 5min esteja zerada ou baixa,
+            # caso contrário o bot nunca operaria em ativos menos líquidos que fazem parte do SECTOR_MAP.
+            import config_risk
+            is_small_account = getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("enabled", False)
+            fixed_lot_size = getattr(config_risk, "HOTFIX_SMALL_ACCOUNT", {}).get("fixed_lot_size", 100.0)
+            
+            if is_small_account and volume <= fixed_lot_size:
+                # Estendemos o limite para o dobro do lote fixo para garantir que a entrada via 100 sempre ocorra.
+                extreme_liquidity_threshold = max(extreme_liquidity_threshold, fixed_lot_size * 2)
+                logger.debug(f"🛡️ [PARADOX FIX] Ajustando limite de liquidez de {symbol} para {extreme_liquidity_threshold} (Small Account Mode).")
+
             if volume > extreme_liquidity_threshold:
                 logger.error(f"🚨 [LIQUIDITY CRASH] {symbol}: Volume solicitado ({volume}) é extremo vs liquidez segura ({extreme_liquidity_threshold:.1f}). ABORTANDO EXECUÇÃO.")
                 return False
 
-            if volume > safe_volume_limit:
+            # 🛡️ [SMART SLICING FIX] Se o volume for <= lote fixo da conta pequena,
+            # NÃO FATIAMOS sob nenhuma circunstância, pois isso geraria lotes < 100 (inválidos).
+            if is_small_account and volume <= fixed_lot_size:
+                logger.info(f"🛡️ [SMART] Volume {volume} <= Lote Fixo {fixed_lot_size}. Ignorando fatiamento para garantir execução.")
+            elif volume > safe_volume_limit:
                 logger.info(f"⚖️ [SMART] Volume {volume} > {avg_vol_5m} * {eta:.1f}. Fatiando execução.")
                 self.execute_advanced(symbol, side, volume, 10, comment)
                 return True
-            else:
-                order = OrderParams(symbol=symbol, side=side, volume=volume, price=price, sl=sl, tp=tp, comment=comment)
-                res = self.send_order(order)
-                return res.get("status") == "success"
+            
+            # Execução direta (para volumes seguros ou quando o fatiamento é evitado)
+            order = OrderParams(symbol=symbol, side=side, volume=volume, price=price, sl=sl, tp=tp, comment=comment)
+            res = self.send_order(order)
+            return res.get("status") == "success"
         except Exception as e:
             logger.error(f"Erro no smart order ({symbol}): {e}")
             order = OrderParams(symbol=symbol, side=side, volume=volume, price=price, sl=sl, tp=tp, comment=comment)

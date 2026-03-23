@@ -12,6 +12,13 @@ import os
 import requests
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
+import xgboost as xgb
+
+logger = logging.getLogger(__name__)
+
+# FIX P3: controle de warnings unicos por ativo por sessao
+_warned_symbols: set = set()
 import warnings
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import log_loss
@@ -360,7 +367,7 @@ def fast_backtest_core(
                 else:
                     total_gross_loss += abs(gross_profit)
 
-                if net_profit > 0:
+                if net_profit > 1e-6:
                     wins += 1
                 else:
                     losses += 1
@@ -938,11 +945,13 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
     else:
         ml_probs = np.ones(len(close)) * 0.50
 
-    # Check de Tendência: ema_s > ema_l em pelo menos 30% das barras
+    # FIX P3b: Check de Tendência — warning único por ativo por sessão
     trend_freq = np.sum(ema_s > ema_l) / len(close)
-    if trend_freq < 0.30:
+    if trend_freq < 0.30 and symbol not in _warned_symbols:
+        _warned_symbols.add(symbol)
         logger.warning(
-            f"[WARN] {symbol}: Mercado sem tendência clara (Alta em apenas {trend_freq:.1%})"
+            f"[WARN] {symbol}: Mercado sem tendência clara "
+            f"(Alta em apenas {trend_freq:.1%}). Este aviso não se repetirá para este ativo nesta sessão."
         )
 
     # ✅ Calculate Average Volume
@@ -969,6 +978,49 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
     except Exception:
         beta_est = 1.0
 
+    # ✅ Problem 2 Fix: Vectorized Setup Estimation (VALE3 Plateau Fix)
+    is_trend_long = ema_s > ema_l
+    is_trend_short = ema_s < ema_l
+    s_rsi_low = params.get("rsi_low", 30)
+    s_rsi_high = params.get("rsi_high", 70)
+    s_adx_threshold = params.get("adx_threshold", 25)
+
+    setup_a_long = is_trend_long & (rsi < s_rsi_low)
+    setup_a_short = is_trend_short & (rsi > s_rsi_high)
+    setup_b_long = rsi_2 < 20
+    setup_b_short = (rsi_2 > 80) & (params.get("enable_shorts", 1) == 1)
+
+    # Simplified Score Signal Long (Vectorized)
+    s_long = np.zeros(len(close))
+    s_long += np.where(close > ema_l, 3, 0)
+    ema_spread = (ema_s - ema_l) / np.maximum(ema_l, 1e-9)
+    s_long += np.where((close > ema_l) & (ema_spread > 0.03), 1, 0)
+    s_long += np.where(rsi < s_rsi_low, 2, 0)
+    s_long += np.where(rsi < 25, 1, 0)
+    s_long += np.where(rsi_2 < 10, 2, 0)
+    s_long += np.where(rsi_2 < 5, 1, 0)
+    s_long += np.where(adx > s_adx_threshold, 2, 0)
+    s_long += np.where(adx > (s_adx_threshold * 0.7), 1, 0)
+    candle_body = close - open_
+    s_long += np.where(candle_body > (atr * 0.3), 1, 0)
+    score_signal_long = s_long >= 6
+
+    setup_mask = setup_a_long | setup_a_short | setup_b_long | setup_b_short | score_signal_long
+    total_setups_estimados = np.sum(setup_mask[1:] & ~setup_mask[:-1])
+
+    # FIX P4: reduzido de 5 para 3 — ativos de baixa frequência (VALE3, mid-caps)
+    # têm naturalmente menos setups por janela e não devem ser descartados cedo.
+    if total_setups_estimados < 3:
+        return {
+            "total_trades": 0,
+            "setups_identified": int(total_setups_estimados),
+            "total_return": 0.0,
+            "max_drawdown": 0.0,
+            "sharpe": 0.0,
+            "profit_factor": 0.0,
+            "insufficient_setups": True
+        }
+
     # Chamada com retorno de contadores
     equity_arr, trades, wins, losses, total_gross_profit, total_gross_loss, sigs, counts = fast_backtest_core(
         close,
@@ -987,23 +1039,23 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
         atr,
         momentum,
         ml_probs,
-        params.get("rsi_low", 30),
-        params.get("rsi_high", 70),
-        params.get("adx_threshold", 25),
+        s_rsi_low,
+        s_rsi_high,
+        s_adx_threshold,
         params.get("sl_atr_multiplier", 2.0),
         params.get("tp_mult", 2.0),
         params.get("base_slippage", 0.002),
         float(avg_volume),
-        0.01,  # Risco base 1% (ajustado dinamicamente dentro do core)
-        1,  # use_trailing (int)
-        params.get("enable_shorts", 1),  # enable_shorts
+        0.01,  # Risco base 1%
+        1,  # use_trailing
+        params.get("enable_shorts", 1),
         asset_type,
         pv,
         ts,
         fee_type,
         fee_val,
         float(beta_est),
-        params.get("trailing_config", None),  # Passa config se existir
+        params.get("trailing_config", None),
     )
 
     # Calculate Trade-based Profit Factor
@@ -1039,27 +1091,71 @@ def backtest_params_on_df(symbol: str, params: dict, df: pd.DataFrame, ml_model=
             "equity_curve": equity_arr.tolist(),
         }
     )
-    # Comentário: E.2 Pós-backtest checks
-    if metrics["total_trades"] == 0 or metrics["max_drawdown"] >= 0.95:
+    # FIX P2: E.2 Pós-backtest checks
+    # Zero absoluto só quando não houve nenhum trade.
+    # Com DD >= 95% mantemos profit_factor e win_rate reais para diagnóstico;
+    # apenas o Calmar (que divide por DD) é zerado para evitar divisão ruidosa.
+    if metrics["total_trades"] == 0:
         metrics["calmar"] = 0.0
         metrics["profit_factor"] = 0.0
         metrics["win_rate"] = 0.0
+    elif metrics["max_drawdown"] >= 0.95:
+        metrics["calmar"] = 0.0          # Calmar zerado: DD extremo distorce a fórmula
+        # profit_factor e win_rate mantidos: diagnóstico precisa dos valores reais
 
     return metrics
 
 
 # =========================================================
+from contextlib import contextmanager
+
+@contextmanager
+def AssetLogContext(symbol: str, output_dir: str = "optimizer_output"):
+    """
+    Context manager to redirect all module logs to a symbol-specific file.
+    Useful for capturing per-asset debug information in parallel runs.
+    """
+    try:
+        log_dir = os.path.join(output_dir, "debug_logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, f"{symbol}_debug.log")
+        
+        # Create file handler
+        fh = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+        fh.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
+        fh.setFormatter(formatter)
+        
+        # Attach to THIS module's logger
+        logger.addHandler(fh)
+        
+        # Also capture Optuna logs
+        optuna_logger = logging.getLogger("optuna")
+        optuna_logger.addHandler(fh)
+        
+        try:
+            yield fh
+        finally:
+            logger.removeHandler(fh)
+            optuna_logger.removeHandler(fh)
+            fh.close()
+    except Exception as e:
+        # Fallback to avoid breaking the optimization if logging fails
+        logger.error(f"Error in AssetLogContext for {symbol}: {e}")
+        yield None
+
 # 4. OBJECTIVE & OPTUNA
 # =========================================================
 def log_rejection(symbol, trial_number, reason, value):
     try:
+        msg = f"{symbol} | Trial {trial_number} | REJEITADO: {reason} | {value}"
+        logger.info(msg) # Capture in FileHandler if active
+
         os.makedirs("optimizer_output", exist_ok=True)
         fname = f"rejections_{symbol}.txt" if symbol else "rejection_reasons.txt"
         with open(os.path.join("optimizer_output", fname), "a", encoding="utf-8") as f:
             # Comentário: H.1 Log expandido com métricas chave
-            f.write(
-                f"{symbol} | Trial {trial_number} | REJEITADO: {reason} | {value}\n"
-            )
+            f.write(f"{msg}\n")
     except Exception:
         pass
 
@@ -1119,6 +1215,34 @@ def objective(trial, symbol, df, ml_model=None):
     except Exception as e:
         log_rejection(symbol, trial.number, "EXCEPTION", f"{str(e)[:50]}")
         return -999.0
+
+
+def get_regime_bounds(regname: str, eta_range: tuple = (0.4, 0.7)) -> dict:
+    """
+    Retorna os limites de busca (bounds) específicos para cada regime de mercado.
+    (Problema Crítico 2)
+    """
+    if regname == 'PROTECTION':
+        return {
+            'sl_atr_multiplier': (1.0, 2.5),
+            'tp_ratio': (1.2, 2.5),
+            'adx_threshold': (28.0, 40.0),
+            'eta_aggression': (0.08, 0.20),
+        }
+    elif regname == 'SIDEWAYS':
+        return {
+            'sl_atr_multiplier': (1.0, 3.0),
+            'tp_ratio': (2.0, 4.0),
+            'adx_threshold': (10.0, 20.0),
+            'eta_aggression': eta_range,
+        }
+    else:  # TREND or others
+        return {
+            'sl_atr_multiplier': (1.5, 3.5), # Teto reduzido (Overfitting)
+            'tp_ratio': (1.5, 4.0), # Força R/R >= 1.5
+            'adx_threshold': (15.0, 35.0),
+            'eta_aggression': eta_range,
+        }
 
 
 def optimize_with_optuna(
@@ -1211,29 +1335,65 @@ def optimize_with_optuna(
             eta_range = (0.4, 0.7)
             ema_l_range = (50, 150)
 
+        # ✅ REGIME-SPECIFIC BOUNDS
+        bounds = get_regime_bounds(regime, eta_range=eta_range)
+
+        # ✅ Problem 1 Fix: Warmup Limit (PETR4 Regression Fix)
+        max_ema = int(len(df_train) * 0.35)  # nunca mais que 35% da janela como warmup
         params = {
             "ema_short": trial.suggest_int("ema_short", 5, 45),
-            "ema_long": trial.suggest_int("ema_long", ema_l_range[0], ema_l_range[1]),
+            "ema_long": trial.suggest_int("ema_long", ema_l_range[0], min(ema_l_range[1], max_ema)),
             "rsi_low": trial.suggest_int("rsi_low", 15, 45),
             "rsi_high": trial.suggest_int("rsi_high", 55, 85),
-            "adx_threshold": trial.suggest_float("adx_threshold", 5.0, 35.0, step=5.0),
+            "adx_threshold": trial.suggest_float("adx_threshold", bounds['adx_threshold'][0], bounds['adx_threshold'][1], step=5.0),
             "use_adx": trial.suggest_categorical("use_adx", [True, False]),
             "sl_atr_multiplier": trial.suggest_float(
-                "sl_atr_multiplier", 1.2, 5.0, step=0.1
+                "sl_atr_multiplier", bounds['sl_atr_multiplier'][0], bounds['sl_atr_multiplier'][1], step=0.1
             ),
-            "tp_ratio": trial.suggest_float("tp_ratio", 1.0, 4.0, step=0.2),
+            "tp_ratio": trial.suggest_float("tp_ratio", bounds['tp_ratio'][0], bounds['tp_ratio'][1], step=0.1),
             "base_slippage": base_slippage,
             "enable_shorts": 1,
-            # ✅ NOVOS PARÂMETROS
             "vol_window": trial.suggest_categorical("vol_window", vol_windows),
             "knn_k": trial.suggest_categorical("knn_k", knn_ks),
-            "eta_aggression": trial.suggest_float("eta_aggression", eta_range[0], eta_range[1]),
+            "eta_aggression": trial.suggest_float("eta_aggression", bounds.get('eta_aggression', eta_range)[0], bounds.get('eta_aggression', eta_range)[1]),
             "basket_id": basket_id
         }
+
+        # ✅ CRITICAL CONSTRAINTS (Problem 3, 5.1, 5.3)
+        if params["ema_short"] >= params["ema_long"]:
+            raise optuna.TrialPruned()
+
+        # 🔥 Constraint R/R Real: Travamento Hard (Obrigatório TP >= 1.2x SL) (Erro 4)
+        if params["tp_ratio"] < 1.2:
+            raise optuna.TrialPruned()
+
+        # 🔥 Constraint EMA Spread: Evitar sinais muito colados (Erro 4)
+        # Cálculo rápido do spread no último candle
+        ema_s_val = df_train['close'].ewm(span=params["ema_short"]).mean().iloc[-1]
+        ema_l_val = df_train['close'].ewm(span=params["ema_long"]).mean().iloc[-1]
+        if abs(ema_s_val - ema_l_val) < 10.0:
+            raise optuna.TrialPruned(f"EMA Spread={abs(ema_s_val-ema_l_val):.1f} < 10")
+
+        # 🔥 Constraint Warmup: Evitar penalidade de 0 trades por janela curta (Caso VALE3)
+        # Garantir que temos pelo menos 2.5x a janela da média para estabilização
+        if len(df_train) < (params["ema_long"] * 2.5):
+            raise optuna.TrialPruned()
+
+        # Forçar ADX mínimo se use_adx=True (Ponto 5.3)
+        if params["use_adx"] and params["adx_threshold"] < 12.0:
+            params["adx_threshold"] = 12.0
         params["tp_mult"] = params["sl_atr_multiplier"] * params["tp_ratio"]
 
         try:
             metrics = backtest_params_on_df(symbol, params, df_train, ml_model=ml_model)
+
+            # ✅ Problem 2 Early Exit Handle (VALE3 Plateau Fix)
+            if metrics.get("insufficient_setups"):
+                penalty = 10.0
+                bonus = 0.0
+                score_final = bonus - penalty          # = -10.0  (trial ruim)
+                log_rejection(symbol, trial.number, "INSUFICIENT_SETUPS", f"Setups={metrics.get('setups_identified')} | Penalty applied.")
+                return score_final                     # FIX P1: era -score_final (+10); maximize escolhia o pior
 
             wr = metrics.get("win_rate", 0.0)
             pf = metrics.get("profit_factor", 0.0)
@@ -1280,24 +1440,32 @@ def optimize_with_optuna(
             if dd < 0.30:
                 bonus += 0.2
                 reason.append("BONUS_LOW_DD")
+ 
+            # FIX P6a: teto de penalidade - impede que ativos estruturalmente
+            # dificeis (PETR4, mid-caps) nunca encontrem territorio positivo.
+            # Sem teto: penalty > 7 com reward maximo ~2 -> espaco sempre negativo.
+            # Com teto 4.0: um trial com PF=1.0 e 8 trades limpos sempre pontua > 0.
+            penalty = min(penalty, 4.0)
+            reason.append(f"PenaltyCapped={penalty:.2f}")
+ 
+            # FIX P6b: SCORE POR REGIME - caps em todas as metricas para evitar explosao
+            # pf > 10 acontece com 2-3 trades e perda minima -> cap em 5.0 (estrategia excelente = 5)
+            # sortino > 20 acontece com down_std ≈ 0 -> cap em 10.0 (sortino excepcional = 10)
+            # total_return > 2.0 = position sizing overflow -> cap em 2.0 (200% na janela)
+            pf_capped           = min(pf, 5.0)
+            sortino_capped      = min(metrics.get("sortino", 0.0), 10.0)
+            total_return_capped = min(metrics.get("total_return", 0.0), 2.0)
 
-            # ✅ SCORE POR REGIME
             if regime == "TREND":
-                # Foco: Profit Factor e Retorno (Surfar a onda)
-                score_final = (pf * 1.5) + (metrics.get("total_return", 0.0) * 2.0) + bonus - penalty
+                score_final = (pf_capped * 2.0) + (total_return_capped * 1.2) + bonus - penalty
             elif regime == "SIDEWAYS":
-                # Foco: Win Rate e Sortino (Consistência em baixa volatilidade)
-                score_final = (wr * 3.0) + (metrics.get("sortino", 0.0) * 1.2) + bonus - penalty
-                # Penaliza ADX alto se estiver buscando perfil lateral
-                if params.get("adx_threshold", 0) > 20: 
+                score_final = (wr * 3.0) + (sortino_capped * 2.0) + bonus - penalty
+                if params.get("adx_threshold", 0) > 20:
                     score_final -= 1.0
             elif regime == "PROTECTION":
-                # Foco: Capital Preservation (Mínimo DD)
-                score_final = ((1.0 - dd) * 4.0) + (pf * 1.0) + bonus - penalty
-                # Penaliza trades excessivos se o objetivo é proteção
+                score_final = ((1.0 - dd) * 4.0) + (pf_capped * 1.0) + bonus - penalty
                 if trades > 30: score_final -= 0.5
             else:
-                # Fallback Sharpista
                 score_final = (metrics.get("sharpe", 0.0) * 2.0) + bonus - penalty
 
             if penalty > 0 or bonus > 0:
@@ -1307,14 +1475,14 @@ def optimize_with_optuna(
                     "METRICS",
                     f"Regime={regime} | {' | '.join(reason)} | Score={score_final:.2f}",
                 )
-            return -score_final
+            return score_final
 
         except Exception as e:
             log_rejection(symbol, trial.number, "EXCEPTION", f"{str(e)[:50]}")
-            return 999.0
-
+            return -999.0
+    
     study = optuna.create_study(
-        direction="minimize",
+        direction="maximize",
         sampler=optuna.samplers.TPESampler(seed=42, n_startup_trials=50),
     )
     study.optimize(objective_wrapper, n_trials=n_trials, timeout=timeout)
@@ -1366,7 +1534,7 @@ def diagnostico_final(metrics, params):
 
     symbol = metrics.get("symbol", "ATIVO")
     header = (
-        "\n" + "=" * 40 + f"\n🤖 DIAGNÓSTICO AUTOMÁTICO PARA: {symbol}\n" + "=" * 40
+        "\n" + "=" * 40 + f"\n[BOT] DIAGNOSTICO AUTOMATICO PARA: {symbol}\n" + "=" * 40
     )
     print(header)
     lines = [header]
@@ -1376,11 +1544,24 @@ def diagnostico_final(metrics, params):
     print(base)
     lines.append(base)
 
-    # ✅ TRAVA SOBERANA: Reprovação imediata se PF < 1.0 ou trades insuficientes (Mínimo 5)
-    if pf < 1.0 or trades < 5:
+    # ✅ TRAVA SOBERANA REFINADA: Reprovação se trades < 3 (mínimo absoluto)
+    # R/R alto (ex: EQTL3) é valorizado (Problema 5.4)
+    rr_estimado = params.get("tp_ratio", 1.0)
+    
+    if trades < 4:
         msg = [
-            "❌ VEREDITO: REPROVADO",
-            "   Motivo: Fator de lucro negativo ou amostragem insuficiente (Mínimo 5 trades)."
+            "VEREDITO: REPROVADO",
+            f"   Motivo: Amostragem insuficiente ({trades} trades)."
+        ]
+        for m in msg:
+            print(m)
+            lines.append(m)
+        return "REJECTED"
+
+    if pf < 1.0 and rr_estimado < 1.4:
+        msg = [
+            "VEREDITO: REPROVADO",
+            f"   Motivo: Fator de lucro {pf:.2f} insuficiente para R/R {rr_estimado:.2f}."
         ]
         for m in msg:
             print(m)
@@ -1390,7 +1571,7 @@ def diagnostico_final(metrics, params):
     if adx == 25.0 or adx >= 20.0:
         if sharpe > 1.0 and pf > 2.0:
             msg = [
-                "✅ VEREDITO: SNIPER DE ELITE (Aprovadíssimo)",
+                "VEREDITO: SNIPER DE ELITE (Aprovadíssimo)",
                 "   Motivo: Sharpe alto com precisão cirúrgica.",
                 "   Ação: Colocar em produção IMEDIATAMENTE.",
             ]
@@ -1399,17 +1580,28 @@ def diagnostico_final(metrics, params):
                 lines.append(m)
         elif sharpe > 0.6 and pf > 1.5:
             msg = [
-                "⚠️ VEREDITO: SNIPER MODERADO",
+                "VEREDITO: SNIPER MODERADO",
                 "   Motivo: Lucrativo, mas falta um pouco de consistência.",
                 "   Ação: Testar em Demo ou lote mínimo.",
             ]
             for m in msg:
                 print(m)
                 lines.append(m)
-        else:
+        elif rr_estimado >= 1.4 and trades >= 5 and pf >= 0.80:
+            # FIX P5: exige PF >= 0.80 — R/R alto com PF < 0.80 destrói capital
             msg = [
-                "❌ VEREDITO: REPROVADO",
-                "   Motivo: Poucos trades e lucro irrelevante. Não vale o risco.",
+                "VEREDITO: SNIPER EM OBSERVAÇÃO (R/R Alto)",
+                f"   Motivo: R/R de {rr_estimado:.2f} é excelente, despite borderline metrics.",
+                "   Ação: Monitorar comportamento em tempo real.",
+            ]
+            for m in msg:
+                print(m)
+                lines.append(m)
+        else:
+            pf_msg = f" | PF={pf:.2f} < 0.80 (destruindo capital)" if pf < 0.80 else ""
+            msg = [
+                "VEREDITO: REPROVADO",
+                f"   Motivo: Sem edge real.{pf_msg} Trades={trades} | R/R={rr_estimado:.2f}.",
             ]
             for m in msg:
                 print(m)
@@ -1419,7 +1611,7 @@ def diagnostico_final(metrics, params):
     elif adx == 5.0 or adx <= 10.0:
         if sharpe > 0.8 and pf > 1.25:
             msg = [
-                "✅ VEREDITO: TREND HUNTER (Aprovado)",
+                "VEREDITO: TREND HUNTER (Aprovado)",
                 "   Motivo: O volume compensa o risco. Estilo PETR4.",
                 "   Ação: Produção (cuidado com custos de corretagem).",
             ]
@@ -1429,7 +1621,7 @@ def diagnostico_final(metrics, params):
 
         elif sharpe < 0.2:
             msg = [
-                "🚫 VEREDITO: FALSO POSITIVO (Ruído Puro)",
+                "VEREDITO: FALSO POSITIVO (Ruído Puro)",
                 "   Motivo: O robô escolheu ADX 5 só porque operou muito, mas não deu lucro real.",
                 "   Exemplo: O caso atual da BBAS3 (Sharpe 0.0).",
                 "   Ação: DESCARTAR. Tente forçar manualmente o ADX 25 ou não opere.",
@@ -1440,7 +1632,7 @@ def diagnostico_final(metrics, params):
 
         else:
             msg = [
-                "⚠️ VEREDITO: INCONCLUSIVO (Risco de Overtrading)",
+                "VEREDITO: INCONCLUSIVO (Risco de Overtrading)",
                 "   Motivo: Lucra pouco para o trabalho que dá.",
                 "   Ação: Não operar.",
             ]
@@ -1450,7 +1642,7 @@ def diagnostico_final(metrics, params):
     else:
         if sharpe > 0.9 and pf > 1.7:
             msg = [
-                "✅ VEREDITO: INTERMEDIÁRIO DE ALTA QUALIDADE",
+                "VEREDITO: INTERMEDIÁRIO DE ALTA QUALIDADE",
                 "   Motivo: Bom equilíbrio entre frequência e precisão.",
                 "   Ação: Produção com monitoramento.",
             ]
@@ -1459,7 +1651,7 @@ def diagnostico_final(metrics, params):
                 lines.append(m)
         elif sharpe > 0.5 and pf > 1.3:
             msg = [
-                "⚠️ VEREDITO: INTERMEDIÁRIO MODERADO",
+                "VEREDITO: INTERMEDIÁRIO MODERADO",
                 "   Motivo: Lucrativo, mas pode otimizar ADX.",
                 "   Ação: Testar em Demo ou ajustar filtros.",
             ]
@@ -1468,7 +1660,7 @@ def diagnostico_final(metrics, params):
                 lines.append(m)
         else:
             msg = [
-                "❌ VEREDITO: INTERMEDIÁRIO FRACO",
+                "VEREDITO: INTERMEDIÁRIO FRACO",
                 "   Motivo: Métricas insuficientes para operar com segurança.",
                 "   Ação: Não operar ou reforçar critérios.",
             ]

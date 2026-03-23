@@ -250,5 +250,14 @@ class CalibrationManager:
         self.save()
         logger.info(f"✅ Calibrations processadas para {len(all_results)} ativos.")
 
+    def add_custom_metadata(self, symbol: str, key: str, value: Any):
+        """
+        Adiciona metadados customizados (ex: Tier, Score) a um símbolo.
+        """
+        if symbol in self.calibrations["symbols"]:
+            self.calibrations["symbols"][symbol][key] = value
+            # Não salvamos imediatamente para evitar IO excessivo em loops; 
+            # O salvamento deve ser chamado ao final do processo.
+
 # Instância global
 calibration_manager = CalibrationManager()

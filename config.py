@@ -164,7 +164,14 @@ ANTI_CHOP = {
 }
 
 # Símbolos Proibidos (Proibidos em qualquer otimizador ou sistema)
-FORBIDDEN_SYMBOLS = {'WIN$N', 'IND$N', 'WSP$N', 'WDO$N', 'DOL$N', 'CCM$N', 'BGI$N', 'ICF$N', 'BIT$N', 'DI1$N'}
+FORBIDDEN_SYMBOLS = {
+    'WIN$N', 'IND$N', 'WSP$N', 'WDO$N', 'DOL$N', 'CCM$N', 'BGI$N', 'ICF$N', 'BIT$N', 'DI1$N',
+    'AZUL4', 'BAHI3', 'BLCA3', 'BPAN4', 'CCRO3', 'CIEL3', 'CPLE6', 'CRFB3', 'ELET3', 'EMBR3', 
+    'GUAR3', 'NTCO3', 'PORT3', 'STBP3', 'TRPL4', 'FIQE3', 'RANI3', 'CEAB3', 'MILS3', 'ESPA3',
+    'VLID3', 'SYNE3', 'AALR3', 'POMO4', 'BMGB4', 'MATD3', 'TRAD3', 'SMFT3', 'ALOS3', 'VULC3',
+    'NEOE3', 'ALUP11', 'ABCB4', 'CXSE3', 'EVEN3', 'FRAS3', 'GMAT3', 'GOLL54', 'MDIA3', 'ODPV3',
+    'ORVR3', 'RDOR3', 'ROMI3', 'TAEE11', 'UGPA3', 'UNIP6', 'USIM5', 'VALE3', 'VBBR3', 'CSAN3'
+}
 
 # Configurações de Time Score (regras por período do dia)
 TIME_SCORE_RULES = {

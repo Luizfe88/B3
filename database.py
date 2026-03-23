@@ -627,26 +627,11 @@ def get_recent_adaptive_adjustments(limit: int = 100) -> list:
 
 def cleanup_invalid_symbols():
     """Remove trades that are not B3 stocks according to config.MONITORED_SYMBOLS."""
+    # Desativado temporariamente para permitir visualização de todos os ativos da estratégia
+    return
+    
     import config
     allowed = config.MONITORED_SYMBOLS
-    if not allowed:
-        return
-        
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        # Pega todos os símbolos no banco
-        df = pd.read_sql_query("SELECT DISTINCT symbol FROM trades", conn)
-        invalid = [s for s in df['symbol'].tolist() if s not in allowed]
-        
-        if invalid:
-            query = "DELETE FROM trades WHERE symbol IN ({})".format(','.join(['?']*len(invalid)))
-            conn.execute(query, tuple(invalid))
-            conn.commit()
-            logger.info(f"🧹 Database cleanup: Removed {len(invalid)} non-B3 assets: {invalid}")
-    except Exception as e:
-        logger.error(f"❌ Error during cleanup: {e}")
-    finally:
-        conn.close()
 
 
 def sync_trades_from_mt5():
@@ -685,9 +670,12 @@ def sync_trades_from_mt5():
             return
 
         for deal in deals:
-            # FILTRO CRÍTICO: Somente Ações B3 (conforme MONITORED_SYMBOLS)
-            if deal.symbol not in config.MONITORED_SYMBOLS:
+            # FILTRO: Somente trades com o Magic Number da estratégia (123456)
+            if deal.magic != 123456:
                 continue
+
+            # (Opcional) Poderíamos filtrar por símbolos aqui se necessário, 
+            # mas o usuário quer ver os que foram fechados com esse magic.
 
             # Entry 0 = IN (Abertura), 1 = OUT (Fechamento)
             if deal.entry == 0: # Entrada
